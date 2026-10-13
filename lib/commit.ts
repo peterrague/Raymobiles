@@ -14,3 +14,5 @@ export async function commit(statements: Batch[number][]) {
   }
   await db.batch(statements as unknown as Batch)
 }
+
+/* this is a comment */
