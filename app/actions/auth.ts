@@ -39,11 +39,13 @@ function previewCookieOptions() {
 export async function signOutNow() {
   const jar = await cookies()
   jar.delete(PREVIEW_COOKIE)
-  try {
-    const session = await auth()
-    if (session) await signOut({ redirectTo: "/" })
-  } catch (error) {
-    unstable_rethrow(error)
+  if (process.env.AUTH_SECRET) {
+    try {
+      const session = await auth()
+      if (session) await signOut({ redirectTo: "/" })
+    } catch (error) {
+      unstable_rethrow(error)
+    }
   }
   redirect("/")
 }

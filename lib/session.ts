@@ -11,14 +11,15 @@ import { previewRole } from "./preview"
 export async function requireUser() {
   const role = await previewRole()
   if (role) return previewUser(role)
+  if (!process.env.AUTH_SECRET) redirect("/?error=Configuration")
   const session = await auth()
   const email = session?.user?.email?.toLowerCase()
-  if (!email) redirect("/")
+  if (!email) redirect("/?error=Session")
 
   const [user] = await getDb().select().from(users).where(eq(users.email, email)).limit(1)
   if (!user?.active) {
     await signOut({ redirectTo: "/?error=AccessDenied" })
-    redirect("/")
+    redirect("/?error=AccessDenied")
   }
   return user
 }
