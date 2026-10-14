@@ -34,7 +34,7 @@ export async function Shell({
     <div className="min-h-screen md:grid md:grid-cols-[15.5rem_1fr]">
       <aside className="bg-pine text-white md:min-h-screen">
         <div className="px-4 pt-5 pb-3">
-          <p className="font-serif text-2xl tracking-tight">Batrobas</p>
+          <p className="font-serif text-2xl tracking-tight">Raymobiles</p>
           <p className="text-xs tracking-wide text-white/60">Phone distribution</p>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-4 md:flex-col" aria-label="Main">

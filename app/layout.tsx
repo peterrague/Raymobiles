@@ -22,8 +22,8 @@ const plex = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Batrobas",
-    template: "%s · Batrobas",
+    default: "Raymobiles",
+    template: "%s · Raymobiles",
   },
   description: "Stock, sales, and deposit cash for phone distribution across regions.",
 }
