@@ -8,6 +8,11 @@ export default function Home({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+export default function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   return (
     <main className="relative flex min-h-screen items-center overflow-hidden bg-paper px-6 py-16">
       <div className="pointer-events-none absolute -top-48 -right-40 h-[36rem] w-[36rem] rounded-full bg-pine" />
