@@ -17,7 +17,7 @@ export default function Home({
 
       <div className="relative mx-auto w-full max-w-xl">
         <p className="text-xs font-semibold tracking-[0.28em] text-gold">PHONE DISTRIBUTION</p>
-        <h1 className="mt-5 font-serif text-6xl leading-[0.92] tracking-tight text-ink sm:text-8xl">Batrobas</h1>
+        <h1 className="mt-5 font-serif text-6xl leading-[0.92] tracking-tight text-ink sm:text-8xl">Raymobiles</h1>
         <div className="mt-6 h-px w-16 bg-gold" />
         <p className="mt-6 max-w-sm text-lg leading-8 text-ink/70">
           Stock, sales, and the cash for the day’s phones.
