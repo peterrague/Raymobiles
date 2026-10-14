@@ -1,8 +1,14 @@
-import { signInToPreview } from "@/app/actions/auth"
+import { Suspense } from "react"
+import { signInWithGoogle } from "@/app/actions/auth"
+import { Notice } from "@/components/ui"
 
 export const instant = false
 
-export default function Home() {
+export default function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   return (
     <main className="relative flex min-h-screen items-center overflow-hidden bg-paper px-6 py-16">
       <div className="pointer-events-none absolute -top-48 -right-40 h-[36rem] w-[36rem] rounded-full bg-pine" />
@@ -16,12 +22,52 @@ export default function Home() {
         <p className="mt-6 max-w-sm text-lg leading-8 text-ink/70">
           Stock, sales, and the cash for the day’s phones.
         </p>
-        <form action={signInToPreview} className="mt-10">
-          <button className="rounded-full bg-pine px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-pine-soft">
-            Sign in
-          </button>
-        </form>
+        <Suspense fallback={<SignInButton />}>
+          <SignIn searchParams={searchParams} />
+        </Suspense>
       </div>
     </main>
   )
+}
+
+async function SignIn({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const code = typeof params.error === "string" ? params.error : undefined
+  const message = signInError(code)
+
+  return (
+    <>
+      {message ? (
+        <div className="mt-8 max-w-sm">
+          <Notice tone="warn">{message}</Notice>
+        </div>
+      ) : null}
+      <SignInButton />
+    </>
+  )
+}
+
+function SignInButton() {
+  return (
+    <form action={signInWithGoogle} className="mt-10">
+      <button className="rounded-full bg-pine px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-pine-soft">
+        Sign in with Google
+      </button>
+    </form>
+  )
+}
+
+function signInError(code: string | undefined) {
+  if (code === "AccessDenied") {
+    return "This Google account cannot sign in. Ask an admin to add your email and assign a role."
+  }
+  if (code === "Configuration") {
+    return "Google sign-in is not configured yet."
+  }
+  if (code) return "Google sign-in did not complete. Try again."
+  return null
 }

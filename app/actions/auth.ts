@@ -7,6 +7,8 @@ import { isPreview } from "@/lib/preview"
 import { PREVIEW_COOKIE, previewCookieValue, previewRoleFromForm } from "@/lib/preview-cookie"
 
 export async function signInWithGoogle() {
+  const jar = await cookies()
+  jar.delete(PREVIEW_COOKIE)
   if (!process.env.AUTH_SECRET || !process.env.AUTH_GOOGLE_ID || !process.env.AUTH_GOOGLE_SECRET) {
     redirect("/?error=Configuration")
   }
