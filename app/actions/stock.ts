@@ -63,7 +63,7 @@ export async function saveReceipt(_state: ActionState, formData: FormData): Prom
             .where(eq(centralReceipts.id, id)),
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "update",
               entityType: "central_receipt",
               entityId: id,
@@ -86,11 +86,12 @@ export async function saveReceipt(_state: ActionState, formData: FormData): Prom
           quantity,
           receivedOn: date,
           notes,
+          reference: receiptId,
           recordedBy: user.id,
         }),
         db.insert(auditLogs).values(
           auditEntry({
-            actorId: user.id,
+            actorId: user.id, actorRole: user.role,
             action: "create",
             entityType: "central_receipt",
             entityId: receiptId,
@@ -164,7 +165,7 @@ export async function saveAllocation(_state: ActionState, formData: FormData): P
             .where(eq(allocations.id, id)),
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "update",
               entityType: "allocation",
               entityId: id,
@@ -192,7 +193,7 @@ export async function saveAllocation(_state: ActionState, formData: FormData): P
         }),
         db.insert(auditLogs).values(
           auditEntry({
-            actorId: user.id,
+            actorId: user.id, actorRole: user.role,
             action: "create",
             entityType: "allocation",
             entityId: allocationId,
@@ -266,7 +267,7 @@ export async function saveOpenings(_state: ActionState, formData: FormData): Pro
         statements.push(
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "update",
               entityType: "daily_opening",
               entityId: existing.id,
@@ -290,7 +291,7 @@ export async function saveOpenings(_state: ActionState, formData: FormData): Pro
         statements.push(
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "create",
               entityType: "daily_opening",
               entityId: openingId,

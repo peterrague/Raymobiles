@@ -1,9 +1,16 @@
 import "server-only"
 import { randomUUID } from "node:crypto"
-import { count, eq } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { auditEntry } from "./audit"
 import { getDb } from "./db"
 import { auditLogs, users } from "./db/schema"
+
+export function adminEmails() {
+  return (process.env.ADMIN_EMAIL ?? "")
+    .split(/[\s,]+/)
+    .map((part) => part.trim().replace(/^["']+|["']+$/g, "").toLowerCase())
+    .filter((part) => part.includes("@"))
+}
 
 export async function allowGoogleSignIn(input: {
   email: string
@@ -25,9 +32,7 @@ export async function allowGoogleSignIn(input: {
     return true
   }
 
-  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim()
-  const [row] = await db.select({ value: count() }).from(users)
-  if (!adminEmail || email !== adminEmail || Number(row?.value ?? 0) !== 0) return false
+  if (!adminEmails().includes(email)) return false
 
   const id = randomUUID()
   const name = input.name?.trim() || email
@@ -43,6 +48,7 @@ export async function allowGoogleSignIn(input: {
     db.insert(auditLogs).values(
       auditEntry({
         actorId: id,
+        actorRole: "ADMIN",
         action: "create",
         entityType: "user",
         entityId: id,
