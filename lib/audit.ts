@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import type { AuditJson } from "./db/schema"
+import type { AuditJson, UserRole } from "./db/schema"
 
 export function sameJson(before: AuditJson, after: AuditJson) {
   const keys = new Set([...Object.keys(before), ...Object.keys(after)])
@@ -11,6 +11,7 @@ export function sameJson(before: AuditJson, after: AuditJson) {
 
 export function auditEntry(entry: {
   actorId: string
+  actorRole: UserRole
   action: string
   entityType: string
   entityId: string
@@ -20,10 +21,12 @@ export function auditEntry(entry: {
   return {
     id: randomUUID(),
     actorId: entry.actorId,
+    actorRole: entry.actorRole,
     action: entry.action,
     entityType: entry.entityType,
     entityId: entry.entityId,
     before: entry.before ?? null,
     after: entry.after ?? null,
+    requestId: randomUUID(),
   }
 }

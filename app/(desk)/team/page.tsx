@@ -128,7 +128,9 @@ async function Team() {
           )
         })}
       </section>
-      {people.length === 0 ? <Notice>No users yet. The first Google sign-in for ADMIN_EMAIL creates the admin.</Notice> : null}
+      {people.length === 0 ? (
+        <Notice>No users yet. The Google addresses in ADMIN_EMAIL become admins when they sign in.</Notice>
+      ) : null}
     </>
   )
 }

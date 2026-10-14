@@ -21,7 +21,7 @@ export const manufacturers = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
-    active: boolean("active").notNull().default(true),
+    active: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("manufacturers_name_lower").on(sql`lower(${table.name})`)],
@@ -47,7 +47,7 @@ export const users = pgTable(
     role: roleEnum("role").notNull(),
     regionId: uuid("region_id").references(() => regions.id),
     leadId: uuid("lead_id").references((): AnyPgColumn => users.id),
-    active: boolean("active").notNull().default(true),
+    active: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -59,7 +59,7 @@ export const users = pgTable(
 )
 
 export const centralReceipts = pgTable(
-  "central_receipts",
+  "stock_receipts",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     manufacturerId: uuid("manufacturer_id")
@@ -68,7 +68,8 @@ export const centralReceipts = pgTable(
     quantity: integer("quantity").notNull(),
     receivedOn: date("received_on", { mode: "string" }).notNull(),
     notes: text("notes"),
-    recordedBy: uuid("recorded_by")
+    reference: text("reference").notNull(),
+    recordedBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -78,7 +79,7 @@ export const centralReceipts = pgTable(
 )
 
 export const allocations = pgTable(
-  "allocations",
+  "stock_allocations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     regionId: uuid("region_id")
@@ -90,7 +91,7 @@ export const allocations = pgTable(
     quantity: integer("quantity").notNull(),
     allocatedOn: date("allocated_on", { mode: "string" }).notNull(),
     notes: text("notes"),
-    recordedBy: uuid("recorded_by")
+    recordedBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -109,9 +110,9 @@ export const dailyPrices = pgTable(
     manufacturerId: uuid("manufacturer_id")
       .notNull()
       .references(() => manufacturers.id),
-    priceDate: date("price_date", { mode: "string" }).notNull(),
-    unitPrice: integer("unit_price").notNull(),
-    recordedBy: uuid("recorded_by")
+    priceDate: date("business_date", { mode: "string" }).notNull(),
+    unitPrice: integer("price_minor").notNull(),
+    recordedBy: uuid("set_by")
       .notNull()
       .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -128,7 +129,7 @@ export const dailyPrices = pgTable(
 )
 
 export const dailyOpenings = pgTable(
-  "daily_openings",
+  "daily_stock",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     regionId: uuid("region_id")
@@ -137,9 +138,9 @@ export const dailyOpenings = pgTable(
     manufacturerId: uuid("manufacturer_id")
       .notNull()
       .references(() => manufacturers.id),
-    stockDate: date("stock_date", { mode: "string" }).notNull(),
+    stockDate: date("business_date", { mode: "string" }).notNull(),
     openingQty: integer("opening_qty").notNull(),
-    recordedBy: uuid("recorded_by")
+    recordedBy: uuid("set_by")
       .notNull()
       .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -168,9 +169,9 @@ export const sales = pgTable(
     agentId: uuid("agent_id")
       .notNull()
       .references(() => users.id),
-    saleDate: date("sale_date", { mode: "string" }).notNull(),
+    saleDate: date("business_date", { mode: "string" }).notNull(),
     quantity: integer("quantity").notNull(),
-    recordedBy: uuid("recorded_by")
+    recordedBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -189,10 +190,10 @@ export const cashDays = pgTable(
     regionId: uuid("region_id")
       .notNull()
       .references(() => regions.id),
-    cashDate: date("cash_date", { mode: "string" }).notNull(),
-    balanceBroughtForward: integer("balance_brought_forward").notNull(),
-    cashReceived: integer("cash_received").notNull(),
-    closingBalance: integer("closing_balance"),
+    cashDate: date("business_date", { mode: "string" }).notNull(),
+    balanceBroughtForward: integer("opening_balance_manual_minor").notNull(),
+    cashReceived: integer("cash_received_minor").notNull(),
+    closingBalance: integer("closing_balance_minor"),
     recordedBy: uuid("recorded_by")
       .notNull()
       .references(() => users.id),
@@ -211,7 +212,7 @@ export const cashDays = pgTable(
 )
 
 export const cashSends = pgTable(
-  "cash_sends",
+  "cash_transfers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     regionId: uuid("region_id")
@@ -220,9 +221,10 @@ export const cashSends = pgTable(
     leadId: uuid("lead_id")
       .notNull()
       .references(() => users.id),
-    sendDate: date("send_date", { mode: "string" }).notNull(),
-    amount: integer("amount").notNull(),
-    recordedBy: uuid("recorded_by")
+    sendDate: date("business_date", { mode: "string" }).notNull(),
+    amount: integer("amount_minor").notNull(),
+    reference: text("reference").notNull(),
+    recordedBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -241,11 +243,13 @@ export const auditLogs = pgTable("audit_logs", {
   actorId: uuid("actor_id")
     .notNull()
     .references(() => users.id),
+  actorRole: roleEnum("actor_role").notNull(),
   action: text("action").notNull(),
   entityType: text("entity_type").notNull(),
-  entityId: text("entity_id").notNull(),
+  entityId: uuid("entity_id").notNull(),
   before: jsonb("before").$type<AuditJson | null>(),
   after: jsonb("after").$type<AuditJson | null>(),
+  requestId: text("request_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

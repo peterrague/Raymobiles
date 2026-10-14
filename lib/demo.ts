@@ -240,6 +240,7 @@ function buildWorld(today: string) {
       leadId,
       sendDate: date,
       amount: sent,
+      reference: `send-${regionId}-${dayIndex}`,
       recordedBy: adminId,
       createdAt: STAMP,
       updatedAt: STAMP,

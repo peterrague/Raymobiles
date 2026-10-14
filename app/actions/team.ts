@@ -28,7 +28,7 @@ export async function saveRegion(_state: ActionState, formData: FormData): Promi
         db.insert(regions).values({ id: regionId, name }),
         db.insert(auditLogs).values(
           auditEntry({
-            actorId: user.id,
+            actorId: user.id, actorRole: user.role,
             action: "create",
             entityType: "region",
             entityId: regionId,
@@ -44,7 +44,7 @@ export async function saveRegion(_state: ActionState, formData: FormData): Promi
           db.update(regions).set({ name }).where(eq(regions.id, id)),
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "update",
               entityType: "region",
               entityId: id,
@@ -75,7 +75,7 @@ export async function saveManufacturer(_state: ActionState, formData: FormData):
         db.insert(manufacturers).values({ id: manufacturerId, name, active: true }),
         db.insert(auditLogs).values(
           auditEntry({
-            actorId: user.id,
+            actorId: user.id, actorRole: user.role,
             action: "create",
             entityType: "manufacturer",
             entityId: manufacturerId,
@@ -94,7 +94,7 @@ export async function saveManufacturer(_state: ActionState, formData: FormData):
           db.update(manufacturers).set({ name, active }).where(eq(manufacturers.id, id)),
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: active || current.active ? (active === current.active ? "update" : active ? "reactivate" : "deactivate") : "update",
               entityType: "manufacturer",
               entityId: id,
@@ -173,7 +173,7 @@ export async function saveUser(_state: ActionState, formData: FormData): Promise
       await commit([
         db.insert(users).values({ id: userId, name, email, role, regionId, leadId, active: true }),
         db.insert(auditLogs).values(
-          auditEntry({ actorId: actor.id, action: "create", entityType: "user", entityId: userId, after }),
+          auditEntry({ actorId: actor.id, actorRole: actor.role, action: "create", entityType: "user", entityId: userId, after }),
         ),
       ])
     } else {
@@ -186,7 +186,7 @@ export async function saveUser(_state: ActionState, formData: FormData): Promise
             .where(eq(users.id, current.id)),
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: actor.id,
+              actorId: actor.id, actorRole: actor.role,
               action: "update",
               entityType: "user",
               entityId: current.id,
@@ -238,7 +238,7 @@ export async function setUserActive(_state: ActionState, formData: FormData): Pr
       db.update(users).set({ active, updatedAt: new Date() }).where(eq(users.id, person.id)),
       db.insert(auditLogs).values(
         auditEntry({
-          actorId: actor.id,
+          actorId: actor.id, actorRole: actor.role,
           action: active ? "reactivate" : "deactivate",
           entityType: "user",
           entityId: person.id,

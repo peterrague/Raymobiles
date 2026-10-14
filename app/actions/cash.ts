@@ -67,7 +67,7 @@ export async function saveCashDay(_state: ActionState, formData: FormData): Prom
       )
       statements.push(
         db.insert(auditLogs).values(
-          auditEntry({ actorId: user.id, action: "create", entityType: "cash_day", entityId: id, after }),
+          auditEntry({ actorId: user.id, actorRole: user.role, action: "create", entityType: "cash_day", entityId: id, after }),
         ),
       )
     } else if (!before || !sameJson(before, after)) {
@@ -86,7 +86,7 @@ export async function saveCashDay(_state: ActionState, formData: FormData): Prom
       statements.push(
         db.insert(auditLogs).values(
           auditEntry({
-            actorId: user.id,
+            actorId: user.id, actorRole: user.role,
             action: "update",
             entityType: "cash_day",
             entityId: current.id,
@@ -121,7 +121,7 @@ export async function saveCashDay(_state: ActionState, formData: FormData): Prom
       statements.push(
         db.insert(auditLogs).values(
           auditEntry({
-            actorId: user.id,
+            actorId: user.id, actorRole: user.role,
             action: "update",
             entityType: "cash_day",
             entityId: next.id,
@@ -170,10 +170,11 @@ export async function saveCashSent(_state: ActionState, formData: FormData): Pro
           leadId,
           sendDate: date,
           amount,
+          reference: id,
           recordedBy: user.id,
         }),
         db.insert(auditLogs).values(
-          auditEntry({ actorId: user.id, action: "create", entityType: "cash_sent", entityId: id, after }),
+          auditEntry({ actorId: user.id, actorRole: user.role, action: "create", entityType: "cash_sent", entityId: id, after }),
         ),
       ])
     } else {
@@ -184,7 +185,7 @@ export async function saveCashSent(_state: ActionState, formData: FormData): Pro
           .where(eq(cashSends.id, current.id)),
         db.insert(auditLogs).values(
           auditEntry({
-            actorId: user.id,
+            actorId: user.id, actorRole: user.role,
             action: "update",
             entityType: "cash_sent",
             entityId: current.id,

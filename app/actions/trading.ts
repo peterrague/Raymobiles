@@ -96,7 +96,7 @@ export async function saveSales(_state: ActionState, formData: FormData): Promis
         statements.push(
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "update",
               entityType: "sale",
               entityId: current.id,
@@ -121,7 +121,7 @@ export async function saveSales(_state: ActionState, formData: FormData): Promis
         statements.push(
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "create",
               entityType: "sale",
               entityId: saleId,
@@ -177,7 +177,7 @@ export async function savePrices(_state: ActionState, formData: FormData): Promi
         statements.push(
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "update",
               entityType: "daily_price",
               entityId: current.id,
@@ -201,7 +201,7 @@ export async function savePrices(_state: ActionState, formData: FormData): Promi
         statements.push(
           db.insert(auditLogs).values(
             auditEntry({
-              actorId: user.id,
+              actorId: user.id, actorRole: user.role,
               action: "create",
               entityType: "daily_price",
               entityId: priceId,

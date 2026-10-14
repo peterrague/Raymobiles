@@ -4,6 +4,9 @@ import * as schema from "./schema"
 
 let database: NeonHttpDatabase<typeof schema> | undefined
 
+
+// comments: this is a function that returns a database connection
+
 export function getDb() {
   if (!database) {
     const url = process.env.DATABASE_URL
