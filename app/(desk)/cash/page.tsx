@@ -8,15 +8,19 @@ import { MatchPill } from "@/components/match-pill"
 import { DataTable, Notice, PageHeader, Panel, Stat, Td, Th, inputClass, labelClass } from "@/components/ui"
 import { depositGap, startingCash, transactionAmount } from "@/lib/books"
 import {
+  activeLead,
   cashDay,
   cashSend,
+  findUser,
   listRegions,
+  listUsers,
   loadReport,
   previousCashDay,
   summariseSales,
 } from "@/lib/data"
+import { selectedRegion } from "@/lib/desk-region"
 import { formatKes, formatKesOrDash, formatNumber } from "@/lib/format"
-import { deskHref, pickId } from "@/lib/href"
+import { deskHref } from "@/lib/href"
 import { readFilters } from "@/lib/search"
 import { requireRole, requireUser } from "@/lib/session"
 
@@ -43,9 +47,13 @@ async function Cash({
   const user = await requireUser()
   requireRole(user, ["ADMIN", "SALES_LEAD"])
   const filters = await readFilters(searchParams)
-  const regions = await listRegions()
-  const regionId = user.role === "ADMIN" ? pickId(filters.region, regions) : (user.regionId ?? "")
+  const [regions, people] = await Promise.all([
+    listRegions(),
+    user.role === "ADMIN" ? listUsers() : Promise.resolve([]),
+  ])
+  const regionId = user.role === "ADMIN" ? await selectedRegion(filters.region, regions) : (user.regionId ?? "")
   const region = regions.find((item) => item.id === regionId)
+  const regionLead = regionId ? await activeLead(regionId) : null
   const [day, previous, sent, report, allRegions] = await Promise.all([
     regionId ? cashDay(regionId, filters.date) : Promise.resolve(null),
     regionId ? previousCashDay(regionId, filters.date) : Promise.resolve(null),
@@ -65,12 +73,14 @@ async function Cash({
     day && day.closingBalance !== null ? transactionAmount(startingCash(day.balanceBroughtForward, day.cashReceived), day.closingBalance) : null
   const gap = transaction === null ? null : depositGap(transaction, summary.deposits.expected)
   const previousOpen = previous && previous.closingBalance === null
+  const sentLead = sent ? await findUser(sent.leadId) : null
+  const leadName = sentLead?.name ?? regionLead?.name ?? null
 
   return (
     <>
       <PageHeader
-        title="Cash"
-        lede="This is working cash for customer deposits, not income. Starting cash is the balance brought forward plus cash received. The transaction is starting cash minus the closing balance."
+        title={region ? `${region.name} cash` : "Cash"}
+        lede="This is working cash for customer deposits, not income. Starting cash is the balance brought forward plus cash received. The transaction is starting cash minus the closing balance. Choose a region to switch between Mombasa and Nyandarua."
       />
       <Filters path="/cash" date={filters.date} regions={regions} regionId={regionId} showRegion={user.role === "ADMIN"} />
       {previousOpen ? (
@@ -86,7 +96,7 @@ async function Cash({
       {region ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Stat label="Balance brought forward" value={formatKesOrDash(broughtForward)} hint={lockedForward ? `From ${previous?.cashDate}` : "Enter this on the region’s first day"} />
-          <Stat label="Cash received" value={day ? formatKes(day.cashReceived) : "—"} hint="The figure the lead records" />
+          <Stat label="Cash received" value={day ? formatKes(day.cashReceived) : "—"} hint={leadName ? `Recorded for ${leadName}` : "No sales lead is assigned"} />
           <Stat label="Starting cash" value={formatKesOrDash(starting)} />
           <Stat label="Closing balance" value={formatKesOrDash(day?.closingBalance ?? null)} hint="Carries into the next day" />
           <Stat label="Transaction" value={formatKesOrDash(transaction)} hint="Cash used for deposits" />
@@ -106,7 +116,9 @@ async function Cash({
               <MatchPill sent={sent?.amount ?? null} received={day ? day.cashReceived : null} />
             </div>
             <p className="mt-2 text-xs leading-5 text-ink/60">
-              Admin sent {formatKesOrDash(sent?.amount ?? null)}. The books use the cash the lead recorded.
+              {leadName
+                ? `Admin sent ${formatKesOrDash(sent?.amount ?? null)} to ${leadName}. The books use the cash ${leadName} recorded.`
+                : `Admin sent ${formatKesOrDash(sent?.amount ?? null)}. Assign a sales lead before cash can be received.`}
             </p>
           </div>
         </div>
@@ -157,12 +169,17 @@ async function Cash({
         ) : null}
 
         {user.role === "ADMIN" && region ? (
-          <Panel title="Cash sent by admin">
+          <Panel title={leadName ? `Cash sent to ${leadName}` : "Cash sent by admin"}>
             <ActionForm action={saveCashSent} submitLabel="Log cash sent">
               <input type="hidden" name="regionId" value={region.id} />
               <input type="hidden" name="date" value={filters.date} />
+              <p className="text-sm text-ink/70">
+                {leadName
+                  ? `${leadName} is the sales lead for ${region.name}.`
+                  : `${region.name} has no active sales lead.`}
+              </p>
               <label className={labelClass}>
-                Amount sent to the sales lead
+                {leadName ? `Amount sent to ${leadName}` : "Amount sent to the sales lead"}
                 <input name="amount" inputMode="numeric" defaultValue={sent?.amount ?? ""} className={inputClass} required />
               </label>
             </ActionForm>
@@ -199,11 +216,12 @@ async function Cash({
 
       {allRegions ? (
         <section className="mt-6">
-          <h2 className="mb-3 text-base font-semibold">All leads on {filters.date}</h2>
-          <DataTable caption="Cash sent and received by region">
+          <h2 className="mb-3 text-base font-semibold">Leads on {filters.date}</h2>
+          <DataTable caption="Cash sent and received by lead">
             <thead>
               <tr>
                 <Th>Region</Th>
+                <Th>Lead</Th>
                 <Th align="right">Sent</Th>
                 <Th align="right">Received</Th>
                 <Th>Check</Th>
@@ -211,24 +229,30 @@ async function Cash({
               </tr>
             </thead>
             <tbody>
-              {allRegions.cash.map((row) => (
-                <tr key={row.regionId}>
-                  <Td>
-                    <Link className="font-semibold text-pine hover:underline" href={deskHref("/cash", { date: filters.date, region: row.regionId })}>
-                      {row.regionName}
-                    </Link>
-                  </Td>
-                  <Td align="right">{formatKesOrDash(row.sent)}</Td>
-                  <Td align="right">{row.recorded ? formatKes(row.received) : "—"}</Td>
-                  <Td>
-                    <MatchPill sent={row.sent} received={row.recorded ? row.received : null} />
-                  </Td>
-                  <Td align="right">{formatKesOrDash(row.transaction)}</Td>
-                </tr>
-              ))}
+              {regions.map((item) => {
+                const row = allRegions.cash.find((entry) => entry.regionId === item.id)
+                const assigned = people.find(
+                  (person) => person.regionId === item.id && person.role === "SALES_LEAD" && person.active,
+                )
+                return (
+                  <tr key={item.id}>
+                    <Td>
+                      <Link className="font-semibold text-pine hover:underline" href={deskHref("/cash", { date: filters.date, region: item.id })}>
+                        {item.name}
+                      </Link>
+                    </Td>
+                    <Td>{row?.leadName ?? assigned?.name ?? "No sales lead"}</Td>
+                    <Td align="right">{formatKesOrDash(row?.sent ?? null)}</Td>
+                    <Td align="right">{row?.recorded ? formatKes(row.received) : "—"}</Td>
+                    <Td>
+                      <MatchPill sent={row?.sent ?? null} received={row?.recorded ? row.received : null} />
+                    </Td>
+                    <Td align="right">{formatKesOrDash(row?.transaction ?? null)}</Td>
+                  </tr>
+                )
+              })}
             </tbody>
           </DataTable>
-          {allRegions.cash.length === 0 ? <Notice>No cash has been logged for this date.</Notice> : null}
         </section>
       ) : null}
     </>

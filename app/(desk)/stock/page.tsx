@@ -8,6 +8,7 @@ import { centralRemaining, stockCell } from "@/lib/books"
 import {
   listManufacturers,
   listRegions,
+  listSupplierPhones,
   loadAllocationRows,
   loadCentralMovements,
   loadReport,
@@ -17,8 +18,8 @@ import {
   summariseSales,
   type StockMovement,
 } from "@/lib/data"
+import { selectedRegion } from "@/lib/desk-region"
 import { formatNumber } from "@/lib/format"
-import { pickId } from "@/lib/href"
 import { readFilters } from "@/lib/search"
 import { requireUser } from "@/lib/session"
 
@@ -46,21 +47,22 @@ async function Stock({
   const filters = await readFilters(searchParams)
   if (user.role === "SALES_AGENT") return <AgentStock date={filters.date} agentId={user.id} />
 
-  const [manufacturers, regions, stock, central, allocationRows] = await Promise.all([
+  const [manufacturers, phones, regions, stock, central, allocationRows] = await Promise.all([
     listManufacturers(),
+    listSupplierPhones(),
     listRegions(),
     loadStockMovements(),
     user.role === "ADMIN" ? loadCentralMovements() : Promise.resolve(null),
     user.role === "ADMIN" ? loadAllocationRows() : Promise.resolve([]),
   ])
-  const regionId = user.role === "ADMIN" ? pickId(filters.region, regions) : (user.regionId ?? "")
+  const regionId = user.role === "ADMIN" ? await selectedRegion(filters.region, regions) : (user.regionId ?? "")
   const active = manufacturers.filter((manufacturer) => manufacturer.active)
 
   return (
     <>
       <PageHeader
         title="Stock"
-        lede="Central phones are received from the manufacturer, then allocated to a region. The lead records opening stock, and sales reduce what is left."
+        lede="Phones are received from a supplier, then allocated to a region. Switch region to open Mombasa or Nyandarua. The lead records opening stock, and sales reduce what is left."
       />
       <Filters
         path="/stock"
@@ -69,7 +71,7 @@ async function Stock({
         regionId={regionId}
         showRegion={user.role === "ADMIN"}
       />
-      {active.length === 0 ? <Notice>Add Jill Multichoice and Kwikhand Enterprise on the Team page, or run the seed script.</Notice> : null}
+      {active.length === 0 ? <Notice>Add Jill on the Team page, with a phone type, model, and quantity supplied.</Notice> : null}
 
       {user.role === "ADMIN" && central ? (
         <>
@@ -87,12 +89,43 @@ async function Stock({
               )
             })}
           </div>
+          <div className="mb-6 grid gap-4">
+            {active.map((manufacturer) => {
+              const lines = phones.filter((phone) => phone.supplierId === manufacturer.id)
+              return (
+                <Panel key={manufacturer.id} title={manufacturer.name}>
+                  {lines.length === 0 ? (
+                    <Notice>Add a phone type, model, and quantity for {manufacturer.name} on the Team page.</Notice>
+                  ) : (
+                    <DataTable caption={`Phones supplied by ${manufacturer.name}`}>
+                      <thead>
+                        <tr>
+                          <Th>Type of phone</Th>
+                          <Th>Model</Th>
+                          <Th align="right">Quantity supplied</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lines.map((phone) => (
+                          <tr key={phone.id}>
+                            <Td>{phone.phoneType}</Td>
+                            <Td>{phone.model}</Td>
+                            <Td align="right">{formatNumber(phone.quantity)}</Td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </DataTable>
+                  )}
+                </Panel>
+              )
+            })}
+          </div>
           <div className="mb-6 grid gap-4 lg:grid-cols-2">
-            <Panel title="Receive from a manufacturer">
+            <Panel title="Receive from a supplier">
               <ActionForm action={saveReceipt} submitLabel="Record receipt">
                 <input type="hidden" name="date" value={filters.date} />
                 <label className={labelClass}>
-                  Manufacturer
+                  Supplier
                   <select name="manufacturerId" className={inputClass} required>
                     {active.map((manufacturer) => (
                       <option key={manufacturer.id} value={manufacturer.id}>
@@ -125,7 +158,7 @@ async function Stock({
                   </select>
                 </label>
                 <label className={labelClass}>
-                  Manufacturer
+                  Supplier
                   <select name="manufacturerId" className={inputClass} required>
                     {active.map((manufacturer) => (
                       <option key={manufacturer.id} value={manufacturer.id}>
@@ -168,7 +201,7 @@ async function Stock({
             <thead>
               <tr>
                 <Th>Region</Th>
-                <Th>Manufacturer</Th>
+                <Th>Supplier</Th>
                 <Th align="right">Opening</Th>
                 <Th align="right">Received</Th>
                 <Th align="right">Sold</Th>
@@ -238,17 +271,17 @@ async function AgentStock({ date, agentId }: { date: string; agentId: string }) 
     <>
       <PageHeader
         title="Phones you have sold"
-        lede="Your own units, by manufacturer. This does not include cash or deposit amounts."
+        lede="Your own units, by supplier. This does not include cash or deposit amounts."
       />
       <Filters path="/stock" date={date} />
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         <Stat label="Sold on this date" value={formatNumber(today.units)} />
         <Stat label="Sold up to this date" value={formatNumber(total.units)} />
       </div>
-      <DataTable caption="Phones sold by manufacturer">
+      <DataTable caption="Phones sold by supplier">
         <thead>
           <tr>
-            <Th>Manufacturer</Th>
+            <Th>Supplier</Th>
             <Th align="right">This date</Th>
             <Th align="right">To date</Th>
           </tr>
@@ -299,7 +332,7 @@ function RegionSheet({
       <DataTable caption={`${title} stock`}>
         <thead>
           <tr>
-            <Th>Manufacturer</Th>
+            <Th>Supplier</Th>
             <Th align="right">Opening</Th>
             <Th align="right">Received</Th>
             <Th align="right">Sold</Th>

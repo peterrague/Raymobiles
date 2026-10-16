@@ -3,6 +3,7 @@ import { Suspense } from "react"
 import { Filters } from "@/components/filters"
 import { MatchPill } from "@/components/match-pill"
 import { DataTable, Notice, PageHeader, Stat, Td, Th } from "@/components/ui"
+import { selectedRegion } from "@/lib/desk-region"
 import { listRegions, loadReport, summariseSales } from "@/lib/data"
 import { periodRange } from "@/lib/dates"
 import { formatKes, formatKesOrDash, formatLongDate, formatNumber, formatRange } from "@/lib/format"
@@ -36,7 +37,7 @@ async function Reports({
   if (user.role !== "ADMIN" && !user.regionId && user.role !== "SALES_AGENT") {
     return <Notice>You are not assigned to a region yet.</Notice>
   }
-  const regionId = user.role === "ADMIN" ? filters.region : (user.regionId ?? "")
+  const regionId = user.role === "ADMIN" ? await selectedRegion(filters.region, regions, { allowAll: true }) : (user.regionId ?? "")
   const range = periodRange(filters.period, filters.date)
   const report = await loadReport({
     start: range.start,
@@ -58,7 +59,7 @@ async function Reports({
         lede={`${formatRange(range.start, range.end)}. ${
           cash
             ? "Units, expected deposits, and cash paid out as deposits."
-            : "Your phones sold, by manufacturer. Cash figures are not included."
+            : "Your phones sold, by supplier. Cash figures are not included."
         }`}
       />
       <Filters
@@ -84,14 +85,14 @@ async function Reports({
       </div>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold">By manufacturer</h2>
+        <h2 className="mb-3 text-base font-semibold">By supplier</h2>
         {summary.manufacturers.length === 0 ? (
           <Notice>No sales in this period.</Notice>
         ) : (
-          <DataTable caption="Units by manufacturer">
+          <DataTable caption="Units by supplier">
             <thead>
               <tr>
-                <Th>Manufacturer</Th>
+                <Th>Supplier</Th>
                 <Th align="right">Phones</Th>
                 {cash ? <Th align="right">Expected deposits</Th> : null}
               </tr>
@@ -175,6 +176,7 @@ async function Reports({
               <tr>
                 <Th>Date</Th>
                 {user.role === "ADMIN" ? <Th>Region</Th> : null}
+                <Th>Lead</Th>
                 <Th align="right">Sent</Th>
                 <Th align="right">Received</Th>
                 <Th>Check</Th>
@@ -186,6 +188,7 @@ async function Reports({
                 <tr key={`${row.regionId}-${row.date}`}>
                   <Td>{formatLongDate(row.date)}</Td>
                   {user.role === "ADMIN" ? <Td>{row.regionName}</Td> : null}
+                  <Td>{row.leadName ?? "No sales lead"}</Td>
                   <Td align="right">{formatKesOrDash(row.sent)}</Td>
                   <Td align="right">{row.recorded ? formatKes(row.received) : "—"}</Td>
                   <Td>

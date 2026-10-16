@@ -27,6 +27,25 @@ export const manufacturers = pgTable(
   (table) => [uniqueIndex("manufacturers_name_lower").on(sql`lower(${table.name})`)],
 )
 
+export const supplierPhones = pgTable(
+  "supplier_phones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => manufacturers.id),
+    phoneType: text("phone_type").notNull(),
+    model: text("model").notNull(),
+    quantity: integer("quantity").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("supplier_phones_supplier_model").on(table.supplierId, sql`lower(${table.model})`),
+    check("supplier_phones_quantity_non_negative", sql`${table.quantity} >= 0`),
+  ],
+)
+
 export const regions = pgTable(
   "regions",
   {
@@ -110,6 +129,7 @@ export const dailyPrices = pgTable(
     manufacturerId: uuid("manufacturer_id")
       .notNull()
       .references(() => manufacturers.id),
+    phoneId: uuid("phone_id").references(() => supplierPhones.id),
     priceDate: date("business_date", { mode: "string" }).notNull(),
     unitPrice: integer("price_minor").notNull(),
     recordedBy: uuid("set_by")
@@ -119,11 +139,7 @@ export const dailyPrices = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("daily_prices_region_manufacturer_date").on(
-      table.regionId,
-      table.manufacturerId,
-      table.priceDate,
-    ),
+    uniqueIndex("daily_prices_region_phone_date").on(table.regionId, table.phoneId, table.priceDate),
     check("daily_prices_unit_price_non_negative", sql`${table.unitPrice} >= 0`),
   ],
 )
@@ -166,6 +182,7 @@ export const sales = pgTable(
     manufacturerId: uuid("manufacturer_id")
       .notNull()
       .references(() => manufacturers.id),
+    phoneId: uuid("phone_id").references(() => supplierPhones.id),
     agentId: uuid("agent_id")
       .notNull()
       .references(() => users.id),
@@ -178,7 +195,7 @@ export const sales = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("sales_agent_manufacturer_date").on(table.agentId, table.manufacturerId, table.saleDate),
+    uniqueIndex("sales_agent_phone_date").on(table.agentId, table.phoneId, table.saleDate),
     check("sales_quantity_non_negative", sql`${table.quantity} >= 0`),
   ],
 )

@@ -1,4 +1,10 @@
+"use client"
+
+import { useRouter } from "next/navigation"
+import { useTransition } from "react"
+import { rememberDeskRegion } from "@/app/actions/desk"
 import type { Period } from "@/lib/dates"
+import { deskHref } from "@/lib/href"
 import { inputClass, labelClass, quietButtonClass } from "./ui"
 
 export function Filters({
@@ -22,6 +28,16 @@ export function Filters({
   includeAllRegions?: boolean
   agent?: string
 }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+
+  function openRegion(region: string) {
+    startTransition(async () => {
+      await rememberDeskRegion(region)
+      router.push(deskHref(path, { date, period, region, agent }))
+    })
+  }
+
   return (
     <form action={path} className="mb-6 flex flex-wrap items-end gap-3">
       {showPeriod ? (
@@ -41,7 +57,13 @@ export function Filters({
       {showRegion && regions ? (
         <label className={labelClass}>
           Region
-          <select name="region" defaultValue={regionId} className={inputClass}>
+          <select
+            name="region"
+            value={regionId}
+            disabled={pending}
+            className={inputClass}
+            onChange={(event) => openRegion(event.target.value)}
+          >
             {includeAllRegions ? <option value="">All regions</option> : null}
             {regions.map((region) => (
               <option key={region.id} value={region.id}>

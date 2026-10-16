@@ -22,12 +22,24 @@ import {
   manufacturers,
   regions,
   sales,
+  supplierPhones,
   users,
 } from "./db/schema"
 
 export async function listManufacturers() {
   if (await isPreview()) return demo.previewManufacturers()
   return getDb().select().from(manufacturers).orderBy(asc(manufacturers.name))
+}
+
+export async function listSupplierPhones() {
+  if (await isPreview()) return demo.previewSupplierPhones()
+  return getDb().select().from(supplierPhones).orderBy(asc(supplierPhones.phoneType), asc(supplierPhones.model))
+}
+
+export async function findSupplierPhone(id: string) {
+  if (await isPreview()) return demo.previewSupplierPhones().find((phone) => phone.id === id) ?? null
+  const [phone] = await getDb().select().from(supplierPhones).where(eq(supplierPhones.id, id)).limit(1)
+  return phone ?? null
 }
 
 export async function listRegions() {
@@ -226,18 +238,12 @@ export async function openingRow(regionId: string, manufacturerId: string, date:
   return row ?? null
 }
 
-export async function priceRow(regionId: string, manufacturerId: string, date: string) {
-  if (await isPreview()) return demo.previewPrice(regionId, manufacturerId, date)
+export async function priceRow(regionId: string, phoneId: string, date: string) {
+  if (await isPreview()) return demo.previewPrice(regionId, phoneId, date)
   const [row] = await getDb()
     .select()
     .from(dailyPrices)
-    .where(
-      and(
-        eq(dailyPrices.regionId, regionId),
-        eq(dailyPrices.manufacturerId, manufacturerId),
-        eq(dailyPrices.priceDate, date),
-      ),
-    )
+    .where(and(eq(dailyPrices.regionId, regionId), eq(dailyPrices.phoneId, phoneId), eq(dailyPrices.priceDate, date)))
     .limit(1)
   return row ?? null
 }
@@ -308,6 +314,7 @@ export type ReportSale = {
   regionName: string
   manufacturerId: string
   manufacturerName: string
+  phoneId: string | null
   agentId: string
   agentName: string
   agentActive: boolean
@@ -328,6 +335,7 @@ export type ReportCash = {
   transaction: number | null
   sent: number | null
   gap: number | null
+  leadName: string | null
 }
 
 export async function loadReport(input: {
@@ -345,6 +353,7 @@ export async function loadReport(input: {
       regionName: regions.name,
       manufacturerId: sales.manufacturerId,
       manufacturerName: manufacturers.name,
+      phoneId: sales.phoneId,
       agentId: sales.agentId,
       agentName: users.name,
       agentActive: users.active,
@@ -375,6 +384,7 @@ export async function loadReport(input: {
     .select({
       regionId: dailyPrices.regionId,
       manufacturerId: dailyPrices.manufacturerId,
+      phoneId: dailyPrices.phoneId,
       date: dailyPrices.priceDate,
       unitPrice: dailyPrices.unitPrice,
     })
@@ -386,12 +396,22 @@ export async function loadReport(input: {
         input.regionId ? eq(dailyPrices.regionId, input.regionId) : undefined,
       ),
     )
-  const prices = new Map(
-    priceRows.map((row) => [`${row.regionId}:${row.manufacturerId}:${row.date}`, row.unitPrice]),
+  const pricesByPhone = new Map(
+    priceRows.flatMap((row) =>
+      row.phoneId ? [[`${row.regionId}:${row.phoneId}:${row.date}`, row.unitPrice] as const] : [],
+    ),
+  )
+  const pricesBySupplier = new Map(
+    priceRows
+      .filter((row) => !row.phoneId)
+      .map((row) => [`${row.regionId}:${row.manufacturerId}:${row.date}`, row.unitPrice]),
   )
   const reportSales: ReportSale[] = saleRows.map((row) => ({
     ...row,
-    price: prices.get(`${row.regionId}:${row.manufacturerId}:${row.date}`) ?? null,
+    price:
+      (row.phoneId ? pricesByPhone.get(`${row.regionId}:${row.phoneId}:${row.date}`) : undefined) ??
+      pricesBySupplier.get(`${row.regionId}:${row.manufacturerId}:${row.date}`) ??
+      null,
   }))
 
   const cashRows = await db
@@ -418,9 +438,11 @@ export async function loadReport(input: {
       regionName: regions.name,
       date: cashSends.sendDate,
       amount: cashSends.amount,
+      leadName: users.name,
     })
     .from(cashSends)
     .innerJoin(regions, eq(cashSends.regionId, regions.id))
+    .innerJoin(users, eq(cashSends.leadId, users.id))
     .where(
       and(
         gte(cashSends.sendDate, input.start),
@@ -428,10 +450,18 @@ export async function loadReport(input: {
         input.regionId ? eq(cashSends.regionId, input.regionId) : undefined,
       ),
     )
-  const sent = new Map(sendRows.map((row) => [`${row.regionId}:${row.date}`, row.amount]))
+  const activeLeads = await db
+    .select({ regionId: users.regionId, name: users.name })
+    .from(users)
+    .where(and(eq(users.role, "SALES_LEAD"), eq(users.active, true)))
+  const leadByRegion = new Map(
+    activeLeads.flatMap((lead) => (lead.regionId ? [[lead.regionId, lead.name] as const] : [])),
+  )
+  const sent = new Map(sendRows.map((row) => [`${row.regionId}:${row.date}`, row]))
   const cash: ReportCash[] = cashRows.map((row) => {
     const starting = startingCash(row.broughtForward, row.received)
-    const sentAmount = sent.get(`${row.regionId}:${row.date}`) ?? null
+    const send = sent.get(`${row.regionId}:${row.date}`)
+    const sentAmount = send?.amount ?? null
     return {
       ...row,
       recorded: true,
@@ -439,6 +469,7 @@ export async function loadReport(input: {
       transaction: row.closing === null ? null : transactionAmount(starting, row.closing),
       sent: sentAmount,
       gap: sentAmount === null ? null : cashGap(sentAmount, row.received),
+      leadName: send?.leadName ?? leadByRegion.get(row.regionId) ?? null,
     }
   })
   for (const send of sendRows) {
@@ -455,6 +486,7 @@ export async function loadReport(input: {
       transaction: null,
       sent: send.amount,
       gap: null,
+      leadName: send.leadName,
     })
   }
   cash.sort((a, b) => a.date.localeCompare(b.date) || a.regionName.localeCompare(b.regionName))
