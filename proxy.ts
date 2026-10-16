@@ -19,17 +19,30 @@ export function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = "/"
     url.search = ""
-    return dropUnreadSession(NextResponse.redirect(url), request)
+    return rememberRegion(dropUnreadSession(NextResponse.redirect(url), request), request)
   }
 
   if (signedIn && pathname === "/" && !request.nextUrl.searchParams.has("error")) {
     const url = request.nextUrl.clone()
     url.pathname = "/dashboard"
     url.search = ""
-    return NextResponse.redirect(url)
+    return rememberRegion(NextResponse.redirect(url), request)
   }
 
-  return dropUnreadSession(NextResponse.next(), request)
+  return rememberRegion(dropUnreadSession(NextResponse.next(), request), request)
+}
+
+function rememberRegion(response: NextResponse, request: NextRequest) {
+  const region = request.nextUrl.searchParams.get("region")
+  if (region && /^[0-9a-f-]{36}$/i.test(region)) {
+    response.cookies.set("desk-region", region, {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 90,
+    })
+  }
+  return response
 }
 
 function dropUnreadSession(response: NextResponse, request: NextRequest) {

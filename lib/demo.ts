@@ -10,12 +10,12 @@ import type {
   manufacturers,
   regions,
   sales,
+  supplierPhones,
 } from "./db/schema"
 
 const STAMP = new Date("2026-10-01T06:00:00.000Z")
 
 const jill = "11111111-1111-4111-8111-111111111111"
-const kwik = "22222222-2222-4222-8222-222222222222"
 const mombasa = "33333333-3333-4333-8333-333333333333"
 const nyandarua = "44444444-4444-4444-8444-444444444444"
 const adminId = "55555555-5555-4555-8555-555555555555"
@@ -37,6 +37,7 @@ type ReportSale = {
   regionName: string
   manufacturerId: string
   manufacturerName: string
+  phoneId: string | null
   agentId: string
   agentName: string
   agentActive: boolean
@@ -57,6 +58,7 @@ type ReportCash = {
   transaction: number | null
   sent: number | null
   gap: number | null
+  leadName: string | null
 }
 
 type StockMovement = {
@@ -120,8 +122,33 @@ const people: DbUser[] = [
 ]
 
 const manufacturerRows: Manufacturer[] = [
-  { id: jill, name: "Jill Multichoice", active: true, createdAt: STAMP },
-  { id: kwik, name: "Kwikhand Enterprise", active: true, createdAt: STAMP },
+  { id: jill, name: "Jill", active: true, createdAt: STAMP },
+]
+
+type SupplierPhone = typeof supplierPhones.$inferSelect
+
+const a07 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+const camon = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+const phoneRows: SupplierPhone[] = [
+  {
+    id: a07,
+    supplierId: jill,
+    phoneType: "Samsung",
+    model: "Samsung A07",
+    quantity: 100,
+    createdAt: STAMP,
+    updatedAt: STAMP,
+  },
+  {
+    id: camon,
+    supplierId: jill,
+    phoneType: "Tecno",
+    model: "Tecno Camon",
+    quantity: 40,
+    createdAt: STAMP,
+    updatedAt: STAMP,
+  },
 ]
 
 const regionRows: Region[] = [
@@ -149,12 +176,15 @@ function buildWorld(today: string) {
 
   for (const date of days) {
     for (const regionId of [mombasa, nyandarua]) {
-      for (const manufacturerId of [jill, kwik]) {
-        const price = manufacturerId === jill ? 3900 : 4100
+      for (const [phoneId, price] of [
+        [a07, 3900],
+        [camon, 5200],
+      ] as const) {
         prices.push({
-          id: `price-${regionId}-${manufacturerId}-${date}`,
+          id: `price-${regionId}-${phoneId}-${date}`,
           regionId,
-          manufacturerId,
+          manufacturerId: jill,
+          phoneId,
           priceDate: date,
           unitPrice: price,
           recordedBy: regionId === mombasa ? leadM : leadN,
@@ -167,9 +197,7 @@ function buildWorld(today: string) {
 
   const openingPlan: [string, string, number, number, number][] = [
     [mombasa, jill, 55, 47, 40],
-    [mombasa, kwik, 18, 16, 16],
     [nyandarua, jill, 28, 24, 20],
-    [nyandarua, kwik, 12, 12, 12],
   ]
   openingPlan.forEach(([regionId, manufacturerId, a, b, c], index) => {
     ;[a, b, c].forEach((quantity, dayIndex) => {
@@ -186,21 +214,20 @@ function buildWorld(today: string) {
     })
   })
 
-  const salePlan: [string, string, string, number, number, number][] = [
-    [mombasa, jill, leadM, 5, 4, 10],
-    [mombasa, jill, agentM, 3, 3, 15],
-    [mombasa, kwik, agentM, 2, 2, 0],
-    [nyandarua, jill, leadN, 2, 2, 6],
-    [nyandarua, jill, agentN, 2, 2, 2],
-    [nyandarua, kwik, leadN, 0, 1, 0],
+  const salePlan: [string, string, string, string, number, number, number][] = [
+    [mombasa, jill, a07, leadM, 5, 4, 10],
+    [mombasa, jill, camon, agentM, 3, 3, 15],
+    [nyandarua, jill, a07, leadN, 2, 2, 6],
+    [nyandarua, jill, camon, agentN, 2, 2, 2],
   ]
-  salePlan.forEach(([regionId, manufacturerId, agentId, a, b, c], index) => {
+  salePlan.forEach(([regionId, manufacturerId, phoneId, agentId, a, b, c], index) => {
     ;[a, b, c].forEach((quantity, dayIndex) => {
       if (quantity === 0) return
       saleRows.push({
         id: `sale-${index}-${dayIndex}`,
         regionId,
         manufacturerId,
+        phoneId,
         agentId,
         saleDate: days[dayIndex],
         quantity,
@@ -250,13 +277,10 @@ function buildWorld(today: string) {
   const allocationRows = [
     { id: "alloc-1", regionId: mombasa, manufacturerId: jill, date: days[0], quantity: 70, notes: null },
     { id: "alloc-2", regionId: mombasa, manufacturerId: jill, date: today, quantity: 10, notes: "Morning delivery" },
-    { id: "alloc-3", regionId: mombasa, manufacturerId: kwik, date: days[0], quantity: 24, notes: null },
     { id: "alloc-4", regionId: nyandarua, manufacturerId: jill, date: days[0], quantity: 40, notes: null },
-    { id: "alloc-5", regionId: nyandarua, manufacturerId: kwik, date: days[0], quantity: 16, notes: null },
   ]
   const receipts = [
-    { id: "rcpt-1", manufacturerId: jill, date: days[0], quantity: 200, notes: "Container from Jill Multichoice" },
-    { id: "rcpt-2", manufacturerId: kwik, date: days[0], quantity: 90, notes: null },
+    { id: "rcpt-1", manufacturerId: jill, date: days[0], quantity: 200, notes: "Container from Jill" },
   ]
 
   const names = new Map(people.map((user) => [user.id, user.name]))
@@ -268,6 +292,7 @@ function buildWorld(today: string) {
     regionName: regionNames.get(sale.regionId) ?? "",
     manufacturerId: sale.manufacturerId,
     manufacturerName: manufacturerNames.get(sale.manufacturerId) ?? "",
+    phoneId: sale.phoneId,
     agentId: sale.agentId,
     agentName: names.get(sale.agentId) ?? "",
     agentActive: true,
@@ -276,7 +301,7 @@ function buildWorld(today: string) {
     price: prices.find(
       (price) =>
         price.regionId === sale.regionId &&
-        price.manufacturerId === sale.manufacturerId &&
+        price.phoneId === sale.phoneId &&
         price.priceDate === sale.saleDate,
     )?.unitPrice ?? null,
   }))
@@ -297,6 +322,7 @@ function buildWorld(today: string) {
       transaction,
       sent,
       gap: sent === null ? null : day.cashReceived - sent,
+      leadName: names.get(day.regionId === mombasa ? leadM : leadN) ?? null,
     }
   })
 
@@ -343,6 +369,10 @@ export function previewUser(role: "ADMIN" | "SALES_LEAD" | "SALES_AGENT" = "ADMI
 
 export function previewManufacturers() {
   return manufacturerRows
+}
+
+export function previewSupplierPhones() {
+  return phoneRows
 }
 
 export function previewRegions() {
@@ -425,10 +455,10 @@ export async function previewOpening(regionId: string, manufacturerId: string, d
   )
 }
 
-export async function previewPrice(regionId: string, manufacturerId: string, date: string) {
+export async function previewPrice(regionId: string, phoneId: string, date: string) {
   return (
     (await world()).prices.find(
-      (price) => price.regionId === regionId && price.manufacturerId === manufacturerId && price.priceDate === date,
+      (price) => price.regionId === regionId && price.phoneId === phoneId && price.priceDate === date,
     ) ?? null
   )
 }
@@ -504,8 +534,8 @@ export async function previewAudit() {
       action: "update",
       entityType: "daily_price",
       entityId: "price-today",
-      before: { region: "Mombasa", manufacturer: "Jill Multichoice", date: today, deposit: 3800 } as AuditJson,
-      after: { region: "Mombasa", manufacturer: "Jill Multichoice", date: today, deposit: 3900 } as AuditJson,
+      before: { region: "Mombasa", manufacturer: "Jill", date: today, deposit: 3800 } as AuditJson,
+      after: { region: "Mombasa", manufacturer: "Jill", date: today, deposit: 3900 } as AuditJson,
       createdAt: STAMP,
       actorName: "Asha Hassan",
     },
@@ -517,7 +547,7 @@ export async function previewAudit() {
       before: null,
       after: {
         region: "Mombasa",
-        manufacturer: "Jill Multichoice",
+        manufacturer: "Jill",
         agent: "Peter Njoroge",
         date: today,
         quantity: 15,

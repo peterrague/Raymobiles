@@ -9,6 +9,7 @@ import {
   findRegion,
   findUser,
   listManufacturers,
+  listSupplierPhones,
   loadStockMovements,
   movementsForRegion,
   openingsForRegion,
@@ -46,19 +47,27 @@ export async function saveSales(_state: ActionState, formData: FormData): Promis
       .from(sales)
       .where(and(eq(sales.agentId, seller.id), eq(sales.saleDate, date)))
     const statements = []
+    const suppliers = await listManufacturers()
+    const phones = (await listSupplierPhones()).filter((phone) =>
+      suppliers.some((supplier) => supplier.active && supplier.id === phone.supplierId),
+    )
+    const claimed = new Map<string, number>()
 
-    for (const manufacturer of await listManufacturers()) {
-      const fieldName = `qty.${manufacturer.id}`
+    for (const phone of phones) {
+      const supplier = suppliers.find((item) => item.id === phone.supplierId)
+      const label = `${phone.phoneType} ${phone.model}`
+      const fieldName = `qty.${phone.id}`
       if (!formData.has(fieldName)) continue
-      const quantity = parseWholeNumber(field(formData, fieldName), `${manufacturer.name} phones sold`, {
+      const quantity = parseWholeNumber(field(formData, fieldName), `${label} phones sold`, {
         allowEmptyAs: 0,
         max: 1_000_000,
       })
-      const current = existing.find((row) => row.manufacturerId === manufacturer.id)
+      const current = existing.find((row) => row.phoneId === phone.id)
       const currentQty = current?.quantity ?? 0
       if (!current && quantity === 0) continue
+      const pending = claimed.get(phone.supplierId) ?? 0
       const cell = stockCell({
-        manufacturerId: manufacturer.id,
+        manufacturerId: phone.supplierId,
         date,
         openings,
         allocations: regionAllocations,
@@ -67,20 +76,31 @@ export async function saveSales(_state: ActionState, formData: FormData): Promis
       const available = availableToSell({
         opening: cell.opening,
         receivedToday: cell.received,
-        soldByOthersToday: cell.sold - currentQty,
-        onHandIfThisLineIsZero: cell.onHand + currentQty,
+        soldByOthersToday: cell.sold - currentQty + pending,
+        onHandIfThisLineIsZero: cell.onHand + currentQty - pending,
       })
       if (quantity > available) {
         throw new ActionError(
-          `Only ${Math.max(available, 0)} ${manufacturer.name} phones are available in ${region.name} on ${date}.`,
+          `Only ${Math.max(available, 0)} ${label} phones are available in ${region.name} on ${date}.`,
         )
       }
+      claimed.set(phone.supplierId, pending + quantity - currentQty)
       const before: AuditJson | null = current
-        ? { region: region.name, manufacturer: manufacturer.name, agent: seller.name, date, quantity: current.quantity }
+        ? {
+            region: region.name,
+            supplier: supplier?.name ?? "",
+            phoneType: phone.phoneType,
+            model: phone.model,
+            agent: seller.name,
+            date,
+            quantity: current.quantity,
+          }
         : null
       const after: AuditJson = {
         region: region.name,
-        manufacturer: manufacturer.name,
+        supplier: supplier?.name ?? "",
+        phoneType: phone.phoneType,
+        model: phone.model,
         agent: seller.name,
         date,
         quantity,
@@ -111,7 +131,8 @@ export async function saveSales(_state: ActionState, formData: FormData): Promis
           db.insert(sales).values({
             id: saleId,
             regionId: region.id,
-            manufacturerId: manufacturer.id,
+            manufacturerId: phone.supplierId,
+            phoneId: phone.id,
             agentId: seller.id,
             saleDate: date,
             quantity,
@@ -151,20 +172,34 @@ export async function savePrices(_state: ActionState, formData: FormData): Promi
     const db = getDb()
     const statements = []
 
-    for (const manufacturer of await listManufacturers()) {
-      if (!manufacturer.active) continue
-      const raw = field(formData, `price.${manufacturer.id}`)
+    const suppliers = await listManufacturers()
+    const phones = (await listSupplierPhones()).filter((phone) =>
+      suppliers.some((supplier) => supplier.active && supplier.id === phone.supplierId),
+    )
+    for (const phone of phones) {
+      const supplier = suppliers.find((item) => item.id === phone.supplierId)
+      const label = `${phone.phoneType} ${phone.model}`
+      const raw = field(formData, `price.${phone.id}`)
       if (!raw) continue
-      const unitPrice = parseWholeNumber(raw, `${manufacturer.name} deposit`, { max: 1_000_000 })
-      const current = await priceRow(region.id, manufacturer.id, date)
+      const unitPrice = parseWholeNumber(raw, `${label} price`, { max: 1_000_000 })
+      const current = await priceRow(region.id, phone.id, date)
       const before: AuditJson | null = current
-        ? { region: region.name, manufacturer: manufacturer.name, date, deposit: current.unitPrice }
+        ? {
+            region: region.name,
+            supplier: supplier?.name ?? "",
+            phoneType: phone.phoneType,
+            model: phone.model,
+            date,
+            price: current.unitPrice,
+          }
         : null
       const after: AuditJson = {
         region: region.name,
-        manufacturer: manufacturer.name,
+        supplier: supplier?.name ?? "",
+        phoneType: phone.phoneType,
+        model: phone.model,
         date,
-        deposit: unitPrice,
+        price: unitPrice,
       }
       if (before && sameJson(before, after)) continue
       if (current) {
@@ -192,7 +227,8 @@ export async function savePrices(_state: ActionState, formData: FormData): Promi
           db.insert(dailyPrices).values({
             id: priceId,
             regionId: region.id,
-            manufacturerId: manufacturer.id,
+            manufacturerId: phone.supplierId,
+            phoneId: phone.id,
             priceDate: date,
             unitPrice,
             recordedBy: user.id,

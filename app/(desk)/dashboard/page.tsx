@@ -1,8 +1,10 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Suspense } from "react"
+import { Filters } from "@/components/filters"
 import { MatchPill } from "@/components/match-pill"
 import { DataTable, Notice, PageHeader, Stat, Td, Th } from "@/components/ui"
+import { selectedRegion } from "@/lib/desk-region"
 import { centralRemaining, stockCell } from "@/lib/books"
 import {
   listManufacturers,
@@ -43,13 +45,17 @@ async function Dashboard({
   const user = await requireUser()
   const filters = await readFilters(searchParams)
   const cash = seesCash(user)
+  const regions = user.role === "ADMIN" ? await listRegions() : []
+  const regionId =
+    user.role === "ADMIN" ? await selectedRegion(filters.region, regions) : (user.regionId ?? "")
+  const region = regions.find((item) => item.id === regionId)
   if (user.role === "SALES_LEAD" && !user.regionId) {
     return <Notice>You are not assigned to a region yet.</Notice>
   }
   const report = await loadReport({
     start: filters.date,
     end: filters.date,
-    regionId: user.role === "ADMIN" ? undefined : user.regionId ?? undefined,
+    regionId: user.role === "SALES_AGENT" ? undefined : regionId || undefined,
     agentId: user.role === "SALES_AGENT" ? user.id : undefined,
     includeCash: cash,
   })
@@ -58,13 +64,18 @@ async function Dashboard({
   return (
     <>
       <PageHeader
-        title={user.role === "SALES_AGENT" ? "Your sales" : "Today’s desk"}
+        title={
+          user.role === "SALES_AGENT" ? "Your sales" : region ? `${region.name} desk` : "Today’s desk"
+        }
         lede={
           user.role === "SALES_AGENT"
-            ? "Phones you have recorded, by manufacturer. Deposit prices and cash stay with your sales lead."
-            : "Units sold, expected deposits, and whether the cash sent matches the cash received."
+            ? "Phones you have recorded, by supplier. Deposit prices and cash stay with your sales lead."
+            : "Units sold, expected deposits, and whether the cash sent matches the cash received. Choose Mombasa or Nyandarua to switch the desk."
         }
       />
+      {user.role === "ADMIN" ? (
+        <Filters path="/dashboard" date={filters.date} regions={regions} regionId={regionId} showRegion />
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat label="Phones sold" value={formatNumber(summary.units)} hint={filters.date} />
         {cash ? (
@@ -89,14 +100,14 @@ async function Dashboard({
       ) : null}
 
       <section className="mt-6">
-        <h2 className="mb-3 text-base font-semibold">By manufacturer</h2>
+        <h2 className="mb-3 text-base font-semibold">By supplier</h2>
         {summary.manufacturers.length === 0 ? (
           <Notice>No sales recorded for this date.</Notice>
         ) : (
-          <DataTable caption="Sales by manufacturer">
+          <DataTable caption="Sales by supplier">
             <thead>
               <tr>
-                <Th>Manufacturer</Th>
+                <Th>Supplier</Th>
                 <Th align="right">Phones</Th>
                 {cash ? <Th align="right">Expected deposits</Th> : null}
               </tr>
@@ -128,8 +139,9 @@ async function Dashboard({
             <DataTable caption="Cash comparison">
               <thead>
                 <tr>
-                  <Th>Region</Th>
-                  <Th align="right">Sent</Th>
+                <Th>Region</Th>
+                <Th>Lead</Th>
+                <Th align="right">Sent</Th>
                   <Th align="right">Received</Th>
                   <Th>Check</Th>
                   <Th align="right">Transaction</Th>
@@ -139,6 +151,7 @@ async function Dashboard({
                 {report.cash.map((row) => (
                   <tr key={`${row.regionId}-${row.date}`}>
                     <Td>{row.regionName}</Td>
+                    <Td>{row.leadName ?? "No sales lead"}</Td>
                     <Td align="right">{formatKesOrDash(row.sent)}</Td>
                     <Td align="right">{row.recorded ? formatKes(row.received) : "—"}</Td>
                     <Td>
@@ -151,7 +164,7 @@ async function Dashboard({
             </DataTable>
           )}
           <p className="mt-3 text-sm">
-            <Link className="font-semibold text-pine underline-offset-2 hover:underline" href={deskHref("/cash", { date: filters.date })}>
+            <Link className="font-semibold text-pine underline-offset-2 hover:underline" href={deskHref("/cash", { date: filters.date, region: regionId })}>
               Open the cash book
             </Link>
           </p>
@@ -188,7 +201,7 @@ async function Dashboard({
       ) : null}
       <p className="mt-6 text-sm text-ink/60">
         Weekly and monthly figures are on{" "}
-        <Link className="font-semibold text-pine hover:underline" href={deskHref("/reports", { date: filters.date, period: "week" })}>
+        <Link className="font-semibold text-pine hover:underline" href={deskHref("/reports", { date: filters.date, period: "week", region: regionId })}>
           Reports
         </Link>
         . {periodRange("day", filters.date).start}
@@ -206,7 +219,7 @@ function expenditure(rows: { recorded: boolean; transaction: number | null }[]) 
 async function AdminStock() {
   const [manufacturers, central] = await Promise.all([listManufacturers(), loadCentralMovements()])
   const active = manufacturers.filter((manufacturer) => manufacturer.active)
-  if (active.length === 0) return <Notice>Add manufacturers on the Team page before receiving stock.</Notice>
+  if (active.length === 0) return <Notice>Add a supplier on the Team page before receiving stock.</Notice>
   return (
     <section className="mt-6 grid gap-3 sm:grid-cols-2">
       {active.map((manufacturer) => {
@@ -242,7 +255,7 @@ async function LeadStock({ regionId, date }: { regionId: string; date: string })
       <DataTable caption="Regional stock">
         <thead>
           <tr>
-            <Th>Manufacturer</Th>
+            <Th>Supplier</Th>
             <Th align="right">Opening</Th>
             <Th align="right">Received</Th>
             <Th align="right">Sold</Th>

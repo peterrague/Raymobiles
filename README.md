@@ -1,6 +1,6 @@
 # Batrobas
 
-Web dashboard for phone distribution. The company receives phones from Jill Multichoice and Kwikhand Enterprise and sells them in Mombasa and Nyandarua. Admins, sales leads, and sales agents share one set of books for stock, daily deposit prices, units sold, and the cash leads use to pay customer deposits.
+Web dashboard for phone distribution. Phones come from suppliers. Jill is the supplier, and each supplier lists the type of phone, model, and quantity supplied. The company sells in Mombasa and Nyandarua. Admins, sales leads, and sales agents share one set of books for stock, daily deposit prices, units sold, and the cash leads use to pay customer deposits.
 
 The app is a Next.js project meant to run on Vercel, with Neon Postgres and Google sign-in.
 
@@ -8,7 +8,7 @@ The app is a Next.js project meant to run on Vercel, with Neon Postgres and Goog
 
 - **Admin** sees and edits every region: central stock, allocations, cash sent to each lead, users, and the audit log.
 - **Sales lead** runs one region, records opening stock and the day’s deposit price, handles that region’s cash, and also records their own sales.
-- **Sales agent** records only how many phones they sold, by manufacturer. Agents do not see cash, deposits, or balances.
+- **Sales agent** records only how many phones they sold, by supplier. Agents do not see cash, deposits, or balances.
 
 Removing a lead or agent deactivates the account. Past sales, stock, and cash stay in the daily, weekly, and monthly reports. Every change to stock, prices, sales, cash, users, and roles is written to an audit log the admin can read and nobody can edit.
 
@@ -29,7 +29,7 @@ Expected deposits are phones sold times that day’s deposit price. They are vis
    - `https://<your-vercel-domain>/api/auth/callback/google`
 
 3. Copy `.env.example` to `.env.local` and fill in `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and `ADMIN_EMAIL`.
-4. Create the tables and the two manufacturers and regions:
+4. Create the tables, Jill, and the two regions:
 
 ```bash
 npm install
@@ -50,7 +50,7 @@ Import the repository in Vercel. Set the same environment variables there, using
 - `npm run dev` — local app
 - `npm test` — cash, stock, and reporting-period calculations
 - `npm run db:push` — apply the Drizzle schema to Neon
-- `npm run db:seed` — insert Jill Multichoice, Kwikhand Enterprise, Mombasa, and Nyandarua if they are missing
+- `npm run db:seed` — insert Jill, Mombasa, and Nyandarua if they are missing, and mark every other supplier inactive
 - `npm run db:generate` — write a SQL migration from the schema
 
 Amounts are whole Kenyan shillings. Business dates use Africa/Nairobi.

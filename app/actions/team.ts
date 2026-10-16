@@ -4,11 +4,11 @@ import { randomUUID } from "node:crypto"
 import { eq } from "drizzle-orm"
 import { auditEntry, sameJson } from "@/lib/audit"
 import { commit } from "@/lib/commit"
-import { activeLead, countActiveAdmins, findByName, findManufacturer, findRegion, findUser, listUsers } from "@/lib/data"
+import { activeLead, countActiveAdmins, findByName, findManufacturer, findRegion, findSupplierPhone, findUser, listSupplierPhones, listUsers } from "@/lib/data"
 import { getDb } from "@/lib/db"
-import { auditLogs, manufacturers, regions, users, type AuditJson, type UserRole } from "@/lib/db/schema"
+import { auditLogs, manufacturers, regions, supplierPhones, users, type AuditJson, type UserRole } from "@/lib/db/schema"
 import { ActionError, type ActionState } from "@/lib/errors"
-import { field } from "@/lib/form"
+import { field, parseWholeNumber } from "@/lib/form"
 import { guard } from "@/lib/guard"
 import { refreshDesk } from "@/lib/refresh"
 import { assertAdmin, requireUser } from "@/lib/session"
@@ -64,28 +64,31 @@ export async function saveManufacturer(_state: ActionState, formData: FormData):
   return guard(async () => {
     const user = await requireUser()
     assertAdmin(user)
-    const name = cleanName(field(formData, "name"), "Manufacturer name")
+    const name = cleanName(field(formData, "name"), "Supplier name")
     const id = field(formData, "id")
     const clash = await findByName("manufacturers", name, id || undefined)
-    if (clash) throw new ActionError("A manufacturer with that name already exists.")
+    if (clash) throw new ActionError("A supplier with that name already exists.")
     const db = getDb()
     if (!id) {
+      const phone = phoneInput(formData)
       const manufacturerId = randomUUID()
+      const phoneId = randomUUID()
       await commit([
         db.insert(manufacturers).values({ id: manufacturerId, name, active: true }),
+        db.insert(supplierPhones).values({ id: phoneId, supplierId: manufacturerId, ...phone }),
         db.insert(auditLogs).values(
           auditEntry({
             actorId: user.id, actorRole: user.role,
             action: "create",
             entityType: "manufacturer",
             entityId: manufacturerId,
-            after: { name, active: true },
+            after: { name, active: true, phoneType: phone.phoneType, model: phone.model, quantity: phone.quantity },
           }),
         ),
       ])
     } else {
       const current = await findManufacturer(id)
-      if (!current) throw new ActionError("That manufacturer could not be found.")
+      if (!current) throw new ActionError("That supplier could not be found.")
       const active = field(formData, "active") === "false" ? false : true
       const before: AuditJson = { name: current.name, active: current.active }
       const after: AuditJson = { name, active }
@@ -97,6 +100,70 @@ export async function saveManufacturer(_state: ActionState, formData: FormData):
               actorId: user.id, actorRole: user.role,
               action: active || current.active ? (active === current.active ? "update" : active ? "reactivate" : "deactivate") : "update",
               entityType: "manufacturer",
+              entityId: id,
+              before,
+              after,
+            }),
+          ),
+        ])
+      }
+    }
+    refreshDesk()
+    return { ok: true }
+  })
+}
+
+export async function saveSupplierPhone(_state: ActionState, formData: FormData): Promise<ActionState> {
+  return guard(async () => {
+    const user = await requireUser()
+    assertAdmin(user)
+    const supplier = await findManufacturer(field(formData, "supplierId"))
+    if (!supplier) throw new ActionError("That supplier could not be found.")
+    const phone = phoneInput(formData)
+    const id = field(formData, "id")
+    const phones = await listSupplierPhones()
+    const clash = phones.find(
+      (row) =>
+        row.supplierId === supplier.id &&
+        row.model.toLowerCase() === phone.model.toLowerCase() &&
+        row.id !== id,
+    )
+    if (clash) throw new ActionError(`${supplier.name} already has a ${phone.model}.`)
+    const db = getDb()
+    if (!id) {
+      const phoneId = randomUUID()
+      await commit([
+        db.insert(supplierPhones).values({ id: phoneId, supplierId: supplier.id, ...phone }),
+        db.insert(auditLogs).values(
+          auditEntry({
+            actorId: user.id,
+            actorRole: user.role,
+            action: "create",
+            entityType: "supplier_phone",
+            entityId: phoneId,
+            after: { supplier: supplier.name, ...phone },
+          }),
+        ),
+      ])
+    } else {
+      const current = await findSupplierPhone(id)
+      if (!current || current.supplierId !== supplier.id) throw new ActionError("That phone could not be found.")
+      const before: AuditJson = {
+        supplier: supplier.name,
+        phoneType: current.phoneType,
+        model: current.model,
+        quantity: current.quantity,
+      }
+      const after: AuditJson = { supplier: supplier.name, ...phone }
+      if (!sameJson(before, after)) {
+        await commit([
+          db.update(supplierPhones).set({ ...phone, updatedAt: new Date() }).where(eq(supplierPhones.id, id)),
+          db.insert(auditLogs).values(
+            auditEntry({
+              actorId: user.id,
+              actorRole: user.role,
+              action: "update",
+              entityType: "supplier_phone",
               entityId: id,
               before,
               after,
@@ -275,6 +342,14 @@ async function userSnapshot(person: {
 function cleanName(value: string, label: string) {
   if (value.length < 2 || value.length > 80) throw new ActionError(`${label} should be between 2 and 80 characters.`)
   return value
+}
+
+function phoneInput(formData: FormData) {
+  return {
+    phoneType: cleanName(field(formData, "phoneType"), "Type of phone"),
+    model: cleanName(field(formData, "model"), "Model"),
+    quantity: parseWholeNumber(field(formData, "quantity"), "Quantity supplied"),
+  }
 }
 
 function parseRole(value: string): UserRole {

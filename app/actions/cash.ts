@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto"
 import { eq } from "drizzle-orm"
 import { auditEntry, sameJson } from "@/lib/audit"
 import { commit } from "@/lib/commit"
-import { activeLead, cashDay, cashSend, findRegion, nextCashDay, previousCashDay } from "@/lib/data"
+import { activeLead, cashDay, cashSend, findRegion, findUser, nextCashDay, previousCashDay } from "@/lib/data"
 import { getDb } from "@/lib/db"
 import { auditLogs, cashDays, cashSends, type AuditJson } from "@/lib/db/schema"
 import { ActionError, type ActionState } from "@/lib/errors"
@@ -153,7 +153,8 @@ export async function saveCashSent(_state: ActionState, formData: FormData): Pro
     }
     const leadId = current?.leadId ?? lead?.id
     if (!leadId) throw new ActionError(`${region.name} has no active sales lead to receive cash.`)
-    const leadName = lead && lead.id === leadId ? lead.name : "Sales lead"
+    const namedLead = lead?.id === leadId ? lead : await findUser(leadId)
+    const leadName = namedLead?.name ?? "Sales lead"
     const before: AuditJson | null = current
       ? { region: region.name, lead: leadName, date, sent: current.amount }
       : null

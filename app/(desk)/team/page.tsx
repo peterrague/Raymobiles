@@ -1,10 +1,10 @@
 import type { Metadata } from "next"
 import { Suspense } from "react"
-import { saveManufacturer, saveRegion, saveUser, setUserActive } from "@/app/actions/team"
+import { saveManufacturer, saveRegion, saveSupplierPhone, saveUser, setUserActive } from "@/app/actions/team"
 import { ActionForm } from "@/components/action-form"
-import { Notice, PageHeader, Panel, inputClass, labelClass } from "@/components/ui"
-import { listManufacturers, listRegions, listUsers } from "@/lib/data"
-import { roleLabel } from "@/lib/format"
+import { DataTable, Notice, PageHeader, Panel, Td, Th, inputClass, labelClass } from "@/components/ui"
+import { listManufacturers, listRegions, listSupplierPhones, listUsers } from "@/lib/data"
+import { formatNumber, roleLabel } from "@/lib/format"
 import { requireRole, requireUser } from "@/lib/session"
 
 export const instant = false
@@ -21,16 +21,21 @@ export default function TeamPage() {
 async function Team() {
   const user = await requireUser()
   requireRole(user, ["ADMIN"])
-  const [regions, manufacturers, people] = await Promise.all([listRegions(), listManufacturers(), listUsers()])
+  const [regions, manufacturers, phones, people] = await Promise.all([
+    listRegions(),
+    listManufacturers(),
+    listSupplierPhones(),
+    listUsers(),
+  ])
   const leads = people.filter((person) => person.active && person.role === "SALES_LEAD" && person.regionId)
 
   return (
     <>
       <PageHeader
         title="Team"
-        lede="Add regions, manufacturers, sales leads, and sales agents. Removing someone deactivates the account. Their sales, stock, and cash history stay in the reports."
+        lede="Add regions, suppliers, sales leads, and sales agents. Each supplier lists the phones it distributes. Removing someone deactivates the account. Their sales, stock, and cash history stay in the reports."
       />
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4">
         <Panel title="Regions">
           <ActionForm action={saveRegion} submitLabel="Add region">
             <label className={labelClass}>
@@ -50,30 +55,80 @@ async function Team() {
             ))}
           </div>
         </Panel>
-        <Panel title="Manufacturers">
-          <ActionForm action={saveManufacturer} submitLabel="Add manufacturer">
+      </div>
+      <div className="mt-4">
+        <Panel title="Suppliers">
+          <ActionForm action={saveManufacturer} submitLabel="Add supplier">
             <label className={labelClass}>
-              Name
-              <input name="name" className={inputClass} required />
+              Supplier
+              <input name="name" className={inputClass} placeholder="Jill" required />
             </label>
+            <PhoneFields />
           </ActionForm>
-          <div className="mt-4 grid gap-3">
-            {manufacturers.map((manufacturer) => (
-              <ActionForm key={manufacturer.id} action={saveManufacturer} submitLabel="Update" compact>
-                <input type="hidden" name="id" value={manufacturer.id} />
-                <label className={labelClass}>
-                  <span className="sr-only">Manufacturer name</span>
-                  <input name="name" defaultValue={manufacturer.name} className={inputClass} required />
-                </label>
-                <label className={labelClass}>
-                  Status
-                  <select name="active" defaultValue={manufacturer.active ? "true" : "false"} className={inputClass}>
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
-                  </select>
-                </label>
-              </ActionForm>
-            ))}
+          <div className="mt-4 grid gap-4">
+            {manufacturers
+              .filter((manufacturer) => manufacturer.active)
+              .map((manufacturer) => {
+                const lines = phones.filter((phone) => phone.supplierId === manufacturer.id)
+                return (
+                  <div key={manufacturer.id} className="rounded-lg border border-line p-3">
+                    <ActionForm action={saveManufacturer} submitLabel="Update" compact>
+                      <input type="hidden" name="id" value={manufacturer.id} />
+                      <label className={labelClass}>
+                        <span className="sr-only">Supplier name</span>
+                        <input name="name" defaultValue={manufacturer.name} className={inputClass} required />
+                      </label>
+                      <label className={labelClass}>
+                        Status
+                        <select name="active" defaultValue={manufacturer.active ? "true" : "false"} className={inputClass}>
+                          <option value="true">Active</option>
+                          <option value="false">Inactive</option>
+                        </select>
+                      </label>
+                    </ActionForm>
+                    <div className="mt-3">
+                      {lines.length === 0 ? (
+                        <p className="mb-2 text-sm text-ink/60">No phones under {manufacturer.name} yet.</p>
+                      ) : (
+                        <DataTable caption={`Phones from ${manufacturer.name}`}>
+                          <thead>
+                            <tr>
+                              <Th>Type of phone</Th>
+                              <Th>Model</Th>
+                              <Th align="right">Quantity supplied</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lines.map((phone) => (
+                              <tr key={phone.id}>
+                                <Td>{phone.phoneType}</Td>
+                                <Td>{phone.model}</Td>
+                                <Td align="right">{formatNumber(phone.quantity)}</Td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </DataTable>
+                      )}
+                      {lines.map((phone) => (
+                        <div key={`edit-${phone.id}`} className="mt-3">
+                          <ActionForm action={saveSupplierPhone} submitLabel="Update phone" compact>
+                            <input type="hidden" name="id" value={phone.id} />
+                            <input type="hidden" name="supplierId" value={manufacturer.id} />
+                            <PhoneFields phone={phone} />
+                          </ActionForm>
+                        </div>
+                      ))}
+                      <div className="mt-3">
+                        <p className="mb-2 text-sm font-medium">Add a phone under {manufacturer.name}</p>
+                        <ActionForm action={saveSupplierPhone} submitLabel="Add phone">
+                          <input type="hidden" name="supplierId" value={manufacturer.id} />
+                          <PhoneFields />
+                        </ActionForm>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
           </div>
         </Panel>
       </div>
@@ -131,6 +186,36 @@ async function Team() {
       {people.length === 0 ? (
         <Notice>No users yet. The Google addresses in ADMIN_EMAIL become admins when they sign in.</Notice>
       ) : null}
+    </>
+  )
+}
+
+function PhoneFields({
+  phone,
+}: {
+  phone?: { phoneType: string; model: string; quantity: number }
+}) {
+  return (
+    <>
+      <label className={labelClass}>
+        Type of phone
+        <input name="phoneType" defaultValue={phone?.phoneType ?? ""} className={inputClass} placeholder="Samsung" required />
+      </label>
+      <label className={labelClass}>
+        Model
+        <input name="model" defaultValue={phone?.model ?? ""} className={inputClass} placeholder="Samsung A07" required />
+      </label>
+      <label className={labelClass}>
+        Quantity supplied
+        <input
+          name="quantity"
+          inputMode="numeric"
+          defaultValue={phone?.quantity ?? ""}
+          className={inputClass}
+          placeholder="100"
+          required
+        />
+      </label>
     </>
   )
 }

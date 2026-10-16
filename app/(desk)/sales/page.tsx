@@ -5,7 +5,8 @@ import { saveSales } from "@/app/actions/trading"
 import { ActionForm } from "@/components/action-form"
 import { Filters } from "@/components/filters"
 import { DataTable, Notice, PageHeader, Td, Th, labelClass, inputClass } from "@/components/ui"
-import { dayPrices, daySales, listManufacturers, listRegions, listUsers, regionSellers } from "@/lib/data"
+import { dayPrices, daySales, listManufacturers, listRegions, listSupplierPhones, listUsers, regionSellers } from "@/lib/data"
+import { selectedRegion } from "@/lib/desk-region"
 import { formatKes, formatNumber } from "@/lib/format"
 import { deskHref, pickId } from "@/lib/href"
 import { readFilters } from "@/lib/search"
@@ -33,8 +34,13 @@ async function Sales({
 }) {
   const user = await requireUser()
   const filters = await readFilters(searchParams)
-  const [manufacturers, regions, people] = await Promise.all([listManufacturers(), listRegions(), listUsers()])
-  const regionId = user.role === "ADMIN" ? pickId(filters.region, regions) : (user.regionId ?? "")
+  const [manufacturers, phones, regions, people] = await Promise.all([
+    listManufacturers(),
+    listSupplierPhones(),
+    listRegions(),
+    listUsers(),
+  ])
+  const regionId = user.role === "ADMIN" ? await selectedRegion(filters.region, regions) : (user.regionId ?? "")
   const sellers = regionId ? await regionSellers(regionId) : []
   const agentId = user.role === "SALES_AGENT" ? user.id : pickId(filters.agent, sellers, user.id)
   const cash = seesCash(user)
@@ -45,6 +51,7 @@ async function Sales({
       ])
     : [[], []]
   const active = manufacturers.filter((manufacturer) => manufacturer.active)
+  const lines = phones.filter((phone) => active.some((supplier) => supplier.id === phone.supplierId))
   const visibleSales = user.role === "SALES_AGENT" ? sales.filter((sale) => sale.agentId === user.id) : sales
   const mine = visibleSales.filter((sale) => sale.agentId === agentId)
 
@@ -54,8 +61,8 @@ async function Sales({
         title="Sales"
         lede={
           cash
-            ? "Record phones sold. Expected deposits are the quantity times the deposit price set for that manufacturer and date."
-            : "Record how many phones you sold, by manufacturer. Deposit amounts are handled by your sales lead."
+            ? "Record phones sold by model. Expected deposits use the price set for that type and model on this date."
+            : "Record how many of each model you sold. Prices are set by the admin or your sales lead."
         }
       />
       <Filters
@@ -91,19 +98,21 @@ async function Sales({
         <ActionForm action={saveSales} submitLabel="Save sales">
           <input type="hidden" name="date" value={filters.date} />
           <input type="hidden" name="agentId" value={agentId} />
-          {active.map((manufacturer) => {
-            const quantity = mine.find((sale) => sale.manufacturerId === manufacturer.id)?.quantity ?? 0
-            const price = prices.find((row) => row.manufacturerId === manufacturer.id)?.unitPrice ?? null
+          {lines.length === 0 ? <Notice>Add phone models on the Team page before recording sales.</Notice> : null}
+          {lines.map((phone) => {
+            const supplier = manufacturers.find((item) => item.id === phone.supplierId)
+            const quantity = mine.find((sale) => sale.phoneId === phone.id)?.quantity ?? 0
+            const price = prices.find((row) => row.phoneId === phone.id)?.unitPrice ?? null
             return (
-              <label key={manufacturer.id} className={labelClass}>
-                {manufacturer.name}
+              <label key={phone.id} className={labelClass}>
+                {supplier?.name} · {phone.phoneType} · {phone.model}
                 {cash ? (
                   <span className="text-xs font-normal text-ink/55">
-                    {price === null ? "Deposit price not set" : `${formatKes(price)} deposit · ${formatKes(quantity * price)} expected`}
+                    {price === null ? "Selling price not set" : `${formatKes(price)} each · ${formatKes(quantity * price)} expected`}
                   </span>
                 ) : null}
                 <input
-                  name={`qty.${manufacturer.id}`}
+                  name={`qty.${phone.id}`}
                   inputMode="numeric"
                   defaultValue={quantity || ""}
                   placeholder="0"
@@ -122,7 +131,7 @@ async function Sales({
             <thead>
               <tr>
                 <Th>Person</Th>
-                <Th>Manufacturer</Th>
+                <Th>Phone</Th>
                 <Th align="right">Phones</Th>
                 <Th align="right">Deposit</Th>
                 <Th align="right">Expected</Th>
@@ -132,12 +141,18 @@ async function Sales({
               {visibleSales
                 .filter((sale) => sale.quantity > 0)
                 .map((sale) => {
-                  const price = prices.find((row) => row.manufacturerId === sale.manufacturerId)?.unitPrice ?? null
+                  const phone = phones.find((item) => item.id === sale.phoneId)
+                  const price = phone
+                    ? (prices.find((row) => row.phoneId === phone.id)?.unitPrice ?? null)
+                    : (prices.find((row) => !row.phoneId && row.manufacturerId === sale.manufacturerId)?.unitPrice ?? null)
                   const seller = people.find((person) => person.id === sale.agentId)
+                  const supplier = manufacturers.find((item) => item.id === sale.manufacturerId)
                   return (
                     <tr key={sale.id}>
                       <Td>{seller?.name ?? "Former user"}</Td>
-                      <Td>{manufacturers.find((item) => item.id === sale.manufacturerId)?.name}</Td>
+                      <Td>
+                        {phone ? `${supplier?.name ?? ""} · ${phone.phoneType} · ${phone.model}` : (supplier?.name ?? "Phone")}
+                      </Td>
                       <Td align="right">{formatNumber(sale.quantity)}</Td>
                       <Td align="right">{price === null ? "—" : formatKes(price)}</Td>
                       <Td align="right">{price === null ? "—" : formatKes(price * sale.quantity)}</Td>

@@ -19,7 +19,8 @@ const ENTITIES: Record<string, string> = {
   cash_sent: "Cash sent",
   user: "User",
   region: "Region",
-  manufacturer: "Manufacturer",
+  manufacturer: "Supplier",
+  supplier_phone: "Supplier phone",
 }
 
 export default function AuditPage() {
