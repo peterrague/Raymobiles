@@ -66,6 +66,7 @@ export async function saveManufacturer(_state: ActionState, formData: FormData):
     assertAdmin(user)
     const name = cleanName(field(formData, "name"), "Supplier name")
     const id = field(formData, "id")
+    assertSupplierName(name)
     const clash = await findByName("manufacturers", name, id || undefined)
     if (clash) throw new ActionError("A supplier with that name already exists.")
     const db = getDb()
@@ -89,6 +90,9 @@ export async function saveManufacturer(_state: ActionState, formData: FormData):
     } else {
       const current = await findManufacturer(id)
       if (!current) throw new ActionError("That supplier could not be found.")
+      if (isPhoneBrand(current.name)) {
+        throw new ActionError("That name is a phone, not a supplier. Add it under a supplier.")
+      }
       const active = field(formData, "active") === "false" ? false : true
       const before: AuditJson = { name: current.name, active: current.active }
       const after: AuditJson = { name, active }
@@ -118,7 +122,9 @@ export async function saveSupplierPhone(_state: ActionState, formData: FormData)
     const user = await requireUser()
     assertAdmin(user)
     const supplier = await findManufacturer(field(formData, "supplierId"))
-    if (!supplier) throw new ActionError("That supplier could not be found.")
+    if (!supplier?.active || isPhoneBrand(supplier.name)) {
+      throw new ActionError("Choose an active supplier. Samsung, Tecno, Infinix, and Oppo are phones, not suppliers.")
+    }
     const phone = phoneInput(formData)
     const id = field(formData, "id")
     const phones = await listSupplierPhones()
@@ -336,6 +342,18 @@ async function userSnapshot(person: {
     region: region?.name ?? null,
     lead: lead?.name ?? null,
     active: person.active,
+  }
+}
+
+const PHONE_BRANDS = new Set(["samsung", "tecno", "infinix", "oppo", "itel"])
+
+function isPhoneBrand(name: string) {
+  return PHONE_BRANDS.has(name.trim().toLowerCase())
+}
+
+function assertSupplierName(name: string) {
+  if (isPhoneBrand(name)) {
+    throw new ActionError(`${name} is a phone, not a supplier. Add it as a phone type under the supplier.`)
   }
 }
 

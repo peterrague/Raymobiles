@@ -33,6 +33,29 @@ async function main() {
   `
   await client`ALTER TABLE daily_prices ADD COLUMN IF NOT EXISTS phone_id uuid REFERENCES supplier_phones(id)`
   await client`ALTER TABLE sales ADD COLUMN IF NOT EXISTS phone_id uuid REFERENCES supplier_phones(id)`
+  await client`ALTER TABLE stock_allocations ADD COLUMN IF NOT EXISTS phone_id uuid REFERENCES supplier_phones(id)`
+  await client`ALTER TABLE stock_receipts ADD COLUMN IF NOT EXISTS phone_id uuid REFERENCES supplier_phones(id)`
+  await client`
+    CREATE TABLE IF NOT EXISTS daily_setups (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      business_date date NOT NULL,
+      status text NOT NULL DEFAULT 'draft',
+      supplier_id uuid REFERENCES manufacturers(id),
+      phone_id uuid REFERENCES supplier_phones(id),
+      quantity integer,
+      sends jsonb NOT NULL DEFAULT '[]'::jsonb,
+      cash jsonb NOT NULL DEFAULT '[]'::jsonb,
+      receipt_id uuid,
+      allocations jsonb NOT NULL DEFAULT '[]'::jsonb,
+      recorded_by uuid NOT NULL REFERENCES users(id),
+      created_at timestamptz DEFAULT now() NOT NULL,
+      updated_at timestamptz DEFAULT now() NOT NULL,
+      CONSTRAINT daily_setups_status CHECK (status IN ('draft', 'submitted')),
+      CONSTRAINT daily_setups_quantity_non_negative CHECK (quantity IS NULL OR quantity >= 0)
+    )
+  `
+  await client`CREATE UNIQUE INDEX IF NOT EXISTS daily_setups_date ON daily_setups (business_date)`
+  await client`ALTER TABLE daily_setups ADD COLUMN IF NOT EXISTS sends jsonb NOT NULL DEFAULT '[]'::jsonb`
   await client`DROP INDEX IF EXISTS daily_prices_region_manufacturer_date`
   await client`DROP INDEX IF EXISTS sales_agent_manufacturer_date`
   await client`

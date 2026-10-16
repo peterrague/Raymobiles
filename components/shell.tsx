@@ -8,7 +8,8 @@ import { quietButtonClass } from "./ui"
 import { SideNav } from "./side-nav"
 
 const ITEMS = [
-  { href: "/dashboard", label: "Desk", roles: ["ADMIN", "SALES_LEAD", "SALES_AGENT"] },
+  { href: "/dashboard", label: "Dashboard", roles: ["ADMIN", "SALES_LEAD", "SALES_AGENT"] },
+  { href: "/setup", label: "Daily setup", roles: ["ADMIN"] },
   { href: "/stock", label: "Stock", roles: ["ADMIN", "SALES_LEAD", "SALES_AGENT"] },
   { href: "/sales", label: "Sales", roles: ["ADMIN", "SALES_LEAD", "SALES_AGENT"] },
   { href: "/prices", label: "Prices", roles: ["ADMIN", "SALES_LEAD"] },

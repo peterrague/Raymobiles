@@ -1,10 +1,11 @@
 import type { Metadata } from "next"
 import { Suspense } from "react"
-import { saveAllocation, saveOpenings, saveReceipt } from "@/app/actions/stock"
+import { saveOpenings, saveReceipt } from "@/app/actions/stock"
 import { ActionForm } from "@/components/action-form"
+import { PhoneChoice } from "@/components/phone-choice"
 import { Filters } from "@/components/filters"
 import { DataTable, Notice, PageHeader, Panel, Stat, Td, Th, inputClass, labelClass } from "@/components/ui"
-import { centralRemaining, stockCell } from "@/lib/books"
+import { stockCell } from "@/lib/books"
 import {
   listManufacturers,
   listRegions,
@@ -19,7 +20,7 @@ import {
   type StockMovement,
 } from "@/lib/data"
 import { selectedRegion } from "@/lib/desk-region"
-import { formatNumber } from "@/lib/format"
+import { formatLongDate, formatNumber } from "@/lib/format"
 import { readFilters } from "@/lib/search"
 import { requireUser } from "@/lib/session"
 
@@ -62,7 +63,7 @@ async function Stock({
     <>
       <PageHeader
         title="Stock"
-        lede="Phones are received from a supplier, then allocated to a region. Switch region to open Mombasa or Nyandarua. The lead records opening stock, and sales reduce what is left."
+        lede="Record the date stock arrives from a supplier. Daily setup sends those phones to the regions, which reduces what is left at the centre."
       />
       <Filters
         path="/stock"
@@ -75,19 +76,46 @@ async function Stock({
 
       {user.role === "ADMIN" && central ? (
         <>
-          <div className="mb-6 grid gap-3 sm:grid-cols-2">
-            {active.map((manufacturer) => {
-              const received = sumQty(central.receipts.filter((row) => row.manufacturerId === manufacturer.id))
-              const allocated = sumQty(central.allocations.filter((row) => row.manufacturerId === manufacturer.id))
-              return (
-                <Stat
-                  key={manufacturer.id}
-                  label={manufacturer.name}
-                  value={`${formatNumber(centralRemaining(received, allocated))} at centre`}
-                  hint={`${formatNumber(received)} received · ${formatNumber(allocated)} allocated to regions`}
-                />
-              )
-            })}
+          <div className="mb-6 grid gap-4 lg:grid-cols-2">
+            {centreCards(central.receipts, allocationRows, phones, regions, manufacturers).map((card) => (
+              <Panel key={card.key} title={`${card.supplier} · ${card.item}`}>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                  <div className="col-span-2">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Received</dt>
+                    <dd className="mt-1">
+                      {card.receipts.map((receipt) => (
+                        <p key={receipt.id}>
+                          {formatLongDate(receipt.date)} · {formatNumber(receipt.quantity)}
+                        </p>
+                      ))}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Distributed</dt>
+                    <dd className="num mt-1 text-base">{formatNumber(card.distributed)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">At centre</dt>
+                    <dd className="num mt-1 text-base">{formatNumber(card.remaining)}</dd>
+                  </div>
+                  {card.regions.length > 0 ? (
+                    <div className="col-span-2">
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Regions supplied</dt>
+                      <dd className="mt-1">
+                        {card.regions.map((region) => (
+                          <p key={region.name}>
+                            {region.name} · {formatNumber(region.quantity)}
+                          </p>
+                        ))}
+                      </dd>
+                    </div>
+                  ) : (
+                    <p className="col-span-2 text-ink/60">None sent to a region yet.</p>
+                  )}
+                </dl>
+              </Panel>
+            ))}
+            {central.receipts.length === 0 ? <Notice>No stock has been received from a supplier yet.</Notice> : null}
           </div>
           <div className="mb-6 grid gap-4">
             {active.map((manufacturer) => {
@@ -120,52 +148,21 @@ async function Stock({
               )
             })}
           </div>
-          <div className="mb-6 grid gap-4 lg:grid-cols-2">
+          <div className="mb-6">
             <Panel title="Receive from a supplier">
               <ActionForm action={saveReceipt} submitLabel="Record receipt">
-                <input type="hidden" name="date" value={filters.date} />
+                {phones.filter((phone) => active.some((supplier) => supplier.id === phone.supplierId)).length === 0 ? (
+                  <Notice>Add a phone type and model under a supplier on the Team page before recording a receipt.</Notice>
+                ) : (
+                  <PhoneChoice
+                    suppliers={active}
+                    typeLabel="Type of phone supplied"
+                    phones={phones.filter((phone) => active.some((supplier) => supplier.id === phone.supplierId))}
+                  />
+                )}
                 <label className={labelClass}>
-                  Supplier
-                  <select name="manufacturerId" className={inputClass} required>
-                    {active.map((manufacturer) => (
-                      <option key={manufacturer.id} value={manufacturer.id}>
-                        {manufacturer.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className={labelClass}>
-                  Quantity
-                  <input name="quantity" inputMode="numeric" className={inputClass} required />
-                </label>
-                <label className={labelClass}>
-                  Notes
-                  <input name="notes" className={inputClass} />
-                </label>
-              </ActionForm>
-            </Panel>
-            <Panel title="Allocate to a region">
-              <ActionForm action={saveAllocation} submitLabel="Allocate">
-                <input type="hidden" name="date" value={filters.date} />
-                <label className={labelClass}>
-                  Region
-                  <select name="regionId" defaultValue={regionId} className={inputClass} required>
-                    {regions.map((region) => (
-                      <option key={region.id} value={region.id}>
-                        {region.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className={labelClass}>
-                  Supplier
-                  <select name="manufacturerId" className={inputClass} required>
-                    {active.map((manufacturer) => (
-                      <option key={manufacturer.id} value={manufacturer.id}>
-                        {manufacturer.name}
-                      </option>
-                    ))}
-                  </select>
+                  Date received
+                  <input type="date" name="date" defaultValue={filters.date} className={inputClass} required />
                 </label>
                 <label className={labelClass}>
                   Quantity
@@ -232,25 +229,20 @@ async function Stock({
       ) : null}
 
       {user.role === "ADMIN" && central ? (
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="mt-6">
           <CorrectionList
             title="Recent receipts"
             rows={central.receipts.slice(0, 8).map((row) => ({
               id: row.id,
               manufacturerId: row.manufacturerId,
+              phoneId: row.phoneId,
+              phoneLabel: phoneLabel(phones, row.phoneId),
               quantity: row.quantity,
               date: row.date,
               notes: row.notes,
             }))}
             manufacturers={manufacturers}
             action={saveReceipt}
-          />
-          <CorrectionList
-            title="Recent allocations"
-            rows={allocationRows.slice(0, 8)}
-            manufacturers={manufacturers}
-            regions={regions}
-            action={saveAllocation}
           />
         </div>
       ) : null}
@@ -397,7 +389,6 @@ function CorrectionList({
   title,
   rows,
   manufacturers,
-  regions,
   action,
 }: {
   title: string
@@ -405,12 +396,13 @@ function CorrectionList({
     id: string
     regionId?: string
     manufacturerId: string
+    phoneId?: string | null
+    phoneLabel?: string | null
     quantity: number
     date: string
     notes: string | null
   }[]
   manufacturers: { id: string; name: string; active: boolean }[]
-  regions?: { id: string; name: string }[]
   action: typeof saveReceipt
 }) {
   return (
@@ -420,13 +412,13 @@ function CorrectionList({
         {rows.map((row) => (
           <ActionForm key={row.id} action={action} submitLabel="Update" compact>
             <input type="hidden" name="id" value={row.id} />
-            <input type="hidden" name="date" value={row.date} />
             <input type="hidden" name="manufacturerId" value={row.manufacturerId} />
-            {row.regionId ? <input type="hidden" name="regionId" value={row.regionId} /> : null}
-            <p className="w-full text-sm">
-              {row.date} · {manufacturers.find((item) => item.id === row.manufacturerId)?.name}
-              {row.regionId ? ` · ${regions?.find((item) => item.id === row.regionId)?.name}` : ""}
-            </p>
+            {row.phoneId ? <input type="hidden" name="phoneId" value={row.phoneId} /> : null}
+            <p className="w-full text-sm">{row.phoneLabel || manufacturers.find((item) => item.id === row.manufacturerId)?.name}</p>
+            <label className={labelClass}>
+              Date received
+              <input type="date" name="date" defaultValue={row.date} className={inputClass} required />
+            </label>
             <label className={labelClass}>
               Quantity
               <input name="quantity" defaultValue={row.quantity} inputMode="numeric" className={inputClass} />
@@ -457,10 +449,50 @@ function cellFor(
   })
 }
 
-function sumQty(rows: { quantity: number }[]) {
-  return rows.reduce((sum, row) => sum + row.quantity, 0)
-}
-
 function showQty(value: number | null) {
   return value === null ? "—" : formatNumber(value)
+}
+
+function phoneLabel(phones: { id: string; phoneType: string; model: string }[], phoneId: string | null) {
+  const phone = phones.find((item) => item.id === phoneId)
+  return phone ? `${phone.phoneType} · ${phone.model}` : null
+}
+
+function centreCards(
+  receipts: { id: string; manufacturerId: string; phoneId: string | null; date: string; quantity: number }[],
+  allocations: { regionId: string; manufacturerId: string; phoneId: string | null; quantity: number }[],
+  phones: { id: string; phoneType: string; model: string }[],
+  regions: { id: string; name: string }[],
+  manufacturers: { id: string; name: string }[],
+) {
+  const groups = new Map<string, typeof receipts>()
+  for (const receipt of receipts) {
+    const key = receipt.phoneId ?? `supplier:${receipt.manufacturerId}`
+    const rows = groups.get(key) ?? []
+    rows.push(receipt)
+    groups.set(key, rows)
+  }
+  return [...groups.entries()].map(([key, rows]) => {
+    const phoneId = rows[0]?.phoneId ?? null
+    const supplierId = rows[0]?.manufacturerId ?? ""
+    const matching = allocations.filter((row) =>
+      phoneId ? row.phoneId === phoneId : row.manufacturerId === supplierId && !row.phoneId,
+    )
+    const distributed = matching.reduce((sum, row) => sum + row.quantity, 0)
+    const received = rows.reduce((sum, row) => sum + row.quantity, 0)
+    const byRegion = new Map<string, number>()
+    for (const row of matching) {
+      const name = regions.find((region) => region.id === row.regionId)?.name ?? "Region"
+      byRegion.set(name, (byRegion.get(name) ?? 0) + row.quantity)
+    }
+    return {
+      key,
+      supplier: manufacturers.find((item) => item.id === supplierId)?.name ?? "Supplier",
+      item: phoneLabel(phones, phoneId) ?? "Phones",
+      receipts: [...rows].sort((a, b) => (a.date < b.date ? 1 : -1)),
+      distributed,
+      remaining: received - distributed,
+      regions: [...byRegion.entries()].map(([name, quantity]) => ({ name, quantity })),
+    }
+  })
 }

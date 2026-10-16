@@ -2,14 +2,14 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Suspense } from "react"
 import { Filters } from "@/components/filters"
+import { RegionSales } from "@/components/region-sales"
 import { MatchPill } from "@/components/match-pill"
-import { DataTable, Notice, PageHeader, Stat, Td, Th } from "@/components/ui"
-import { selectedRegion } from "@/lib/desk-region"
-import { centralRemaining, stockCell } from "@/lib/books"
+import { DataTable, Notice, PageHeader, Panel, Stat, Td, Th } from "@/components/ui"
+import { stockCell } from "@/lib/books"
 import {
   listManufacturers,
   listRegions,
-  loadCentralMovements,
+  listSupplierPhones,
   loadReport,
   loadStockMovements,
   movementsForRegion,
@@ -23,7 +23,7 @@ import { readFilters } from "@/lib/search"
 import { requireUser, seesCash } from "@/lib/session"
 
 export const instant = false
-export const metadata: Metadata = { title: "Desk" }
+export const metadata: Metadata = { title: "Dashboard" }
 
 export default function DashboardPage({
   searchParams,
@@ -45,11 +45,21 @@ async function Dashboard({
   const user = await requireUser()
   const filters = await readFilters(searchParams)
   const cash = seesCash(user)
-  const regions = user.role === "ADMIN" ? await listRegions() : []
-  const regionId =
-    user.role === "ADMIN" ? await selectedRegion(filters.region, regions) : (user.regionId ?? "")
-  const region = regions.find((item) => item.id === regionId)
-  if (user.role === "SALES_LEAD" && !user.regionId) {
+  if (user.role === "ADMIN") {
+    const regions = await listRegions()
+    return (
+      <>
+        <PageHeader
+          title="Today’s desk"
+          lede="Total sales, then each region’s sales, remaining phones, and cash sent. Active suppliers are listed below."
+        />
+        <Filters path="/dashboard" date={filters.date} />
+        <AdminOverview date={filters.date} regions={regions} showMoney={cash} />
+      </>
+    )
+  }
+  const regionId = user.regionId ?? ""
+  if (user.role === "SALES_LEAD" && !regionId) {
     return <Notice>You are not assigned to a region yet.</Notice>
   }
   const report = await loadReport({
@@ -64,18 +74,13 @@ async function Dashboard({
   return (
     <>
       <PageHeader
-        title={
-          user.role === "SALES_AGENT" ? "Your sales" : region ? `${region.name} desk` : "Today’s desk"
-        }
+        title={user.role === "SALES_AGENT" ? "Your sales" : "Today’s desk"}
         lede={
           user.role === "SALES_AGENT"
             ? "Phones you have recorded, by supplier. Deposit prices and cash stay with your sales lead."
-            : "Units sold, expected deposits, and whether the cash sent matches the cash received. Choose Mombasa or Nyandarua to switch the desk."
+            : "Units sold, expected deposits, and whether the cash sent matches the cash received."
         }
       />
-      {user.role === "ADMIN" ? (
-        <Filters path="/dashboard" date={filters.date} regions={regions} regionId={regionId} showRegion />
-      ) : null}
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat label="Phones sold" value={formatNumber(summary.units)} hint={filters.date} />
         {cash ? (
@@ -94,13 +99,12 @@ async function Dashboard({
         ) : null}
       </div>
 
-      {user.role === "ADMIN" ? <AdminStock /> : null}
       {user.role === "SALES_LEAD" && user.regionId ? (
         <LeadStock regionId={user.regionId} date={filters.date} />
       ) : null}
 
-      <section className="mt-6">
-        <h2 className="mb-3 text-base font-semibold">By supplier</h2>
+      <div className="mt-6">
+        <Panel title="By supplier">
         {summary.manufacturers.length === 0 ? (
           <Notice>No sales recorded for this date.</Notice>
         ) : (
@@ -128,11 +132,12 @@ async function Dashboard({
             </tbody>
           </DataTable>
         )}
-      </section>
+        </Panel>
+      </div>
 
       {cash && user.role !== "SALES_AGENT" ? (
-        <section className="mt-6">
-          <h2 className="mb-3 text-base font-semibold">Cash sent and received</h2>
+        <div className="mt-4">
+          <Panel title="Cash sent and received">
           {report.cash.length === 0 ? (
             <Notice>No cash has been logged for this date.</Notice>
           ) : (
@@ -168,17 +173,17 @@ async function Dashboard({
               Open the cash book
             </Link>
           </p>
-        </section>
+          </Panel>
+        </div>
       ) : null}
 
       {user.role !== "SALES_AGENT" && summary.agents.length > 0 ? (
-        <section className="mt-6">
-          <h2 className="mb-3 text-base font-semibold">By person</h2>
+        <div className="mt-4">
+          <Panel title="By person">
           <DataTable caption="Sales by person">
             <thead>
               <tr>
                 <Th>Name</Th>
-                {user.role === "ADMIN" ? <Th>Region</Th> : null}
                 <Th align="right">Phones</Th>
                 <Th align="right">Expected deposits</Th>
               </tr>
@@ -190,14 +195,14 @@ async function Dashboard({
                     {agent.name}
                     {agent.active ? "" : " · deactivated"}
                   </Td>
-                  {user.role === "ADMIN" ? <Td>{agent.regionName}</Td> : null}
                   <Td align="right">{formatNumber(agent.units)}</Td>
                   <Td align="right">{formatKes(agent.deposits.expected)}</Td>
                 </tr>
               ))}
             </tbody>
           </DataTable>
-        </section>
+          </Panel>
+        </div>
       ) : null}
       <p className="mt-6 text-sm text-ink/60">
         Weekly and monthly figures are on{" "}
@@ -216,29 +221,129 @@ function expenditure(rows: { recorded: boolean; transaction: number | null }[]) 
   return closed.reduce((sum, row) => sum + (row.transaction ?? 0), 0)
 }
 
-async function AdminStock() {
-  const [manufacturers, central] = await Promise.all([listManufacturers(), loadCentralMovements()])
-  const active = manufacturers.filter((manufacturer) => manufacturer.active)
-  if (active.length === 0) return <Notice>Add a supplier on the Team page before receiving stock.</Notice>
+async function AdminOverview({
+  date,
+  regions,
+  showMoney,
+}: {
+  date: string
+  regions: { id: string; name: string }[]
+  showMoney: boolean
+}) {
+  const [report, stock, manufacturers, phones] = await Promise.all([
+    loadReport({ start: date, end: date, includeCash: showMoney }),
+    loadStockMovements(),
+    listManufacturers(),
+    listSupplierPhones(),
+  ])
+  const active = manufacturers.filter((supplier) => supplier.active)
+  const regionSales = regions.map((region) => {
+    const lines = report.sales.filter((sale) => sale.regionId === region.id && sale.quantity > 0)
+    const expected = lines.every((sale) => sale.price !== null)
+      ? lines.reduce((sum, sale) => sum + sale.quantity * (sale.price ?? 0), 0)
+      : null
+    return {
+      id: region.id,
+      name: region.name,
+      units: lines.reduce((sum, sale) => sum + sale.quantity, 0),
+      expected,
+      lines: lines.map((sale) => {
+        const phone = phones.find((item) => item.id === sale.phoneId)
+        return {
+          id: `${sale.agentId}-${sale.phoneId ?? sale.manufacturerId}`,
+          person: sale.agentName,
+          item: phone ? `${phone.phoneType} · ${phone.model}` : sale.manufacturerName,
+          units: sale.quantity,
+          expected: sale.price === null ? null : sale.quantity * sale.price,
+        }
+      }),
+    }
+  })
+  const balances = regions.map((region) => {
+    const remaining = active.reduce((sum, supplier) => {
+      const cell = stockCell({
+        manufacturerId: supplier.id,
+        date,
+        openings: openingsForRegion(stock.openings, region.id),
+        allocations: movementsForRegion(stock.allocations, region.id),
+        sales: movementsForRegion(stock.sales, region.id),
+      })
+      return sum + cell.onHand
+    }, 0)
+    return { id: region.id, name: region.name, remaining }
+  })
+
   return (
-    <section className="mt-6 grid gap-3 sm:grid-cols-2">
-      {active.map((manufacturer) => {
-        const received = central.receipts
-          .filter((row) => row.manufacturerId === manufacturer.id)
-          .reduce((sum, row) => sum + row.quantity, 0)
-        const allocated = central.allocations
-          .filter((row) => row.manufacturerId === manufacturer.id)
-          .reduce((sum, row) => sum + row.quantity, 0)
-        return (
-          <Stat
-            key={manufacturer.id}
-            label={`${manufacturer.name} at centre`}
-            value={formatNumber(centralRemaining(received, allocated))}
-            hint={`${formatNumber(received)} received · ${formatNumber(allocated)} allocated`}
-          />
-        )
-      })}
-    </section>
+    <div className="grid gap-4">
+      <RegionSales
+        total={regionSales.reduce((sum, region) => sum + region.units, 0)}
+        regions={regionSales}
+        showMoney={showMoney}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+      <Panel title="Stock balance">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {balances.map((region) => (
+            <div key={region.id} className="rounded-lg border border-line bg-white px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">{region.name}</p>
+              <p className="num mt-1 text-xl">{formatNumber(region.remaining)}</p>
+              <p className="mt-1 text-xs leading-5 text-ink/60">Remaining phones</p>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {showMoney ? (
+        <Panel title="Cash sent">
+          <div className="grid gap-3">
+            {regions.map((region) => {
+              const row = report.cash.find((entry) => entry.regionId === region.id)
+              return (
+                <div key={region.id} className="rounded-lg border border-line bg-white px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <Link className="font-semibold text-pine hover:underline" href={deskHref("/cash", { date, region: region.id })}>
+                        {region.name}
+                      </Link>
+                      <p className="mt-1 text-sm text-ink/70">{row?.leadName ?? "No sales lead"}</p>
+                    </div>
+                    <MatchPill sent={row?.sent ?? null} received={row?.recorded ? row.received : null} />
+                  </div>
+                  <p className="num mt-2 text-xl">{formatKesOrDash(row?.sent ?? null)}</p>
+                </div>
+              )
+            })}
+          </div>
+        </Panel>
+      ) : null}
+      </div>
+
+      <Panel title="Active suppliers">
+          {active.length === 0 ? <Notice>No active supplier yet. Add Jill on the Team page.</Notice> : null}
+          <div className="grid gap-3">
+            {active.map((supplier) => {
+              const models = phones.filter((phone) => phone.supplierId === supplier.id)
+              return (
+                <div key={supplier.id} className="rounded-lg border border-line bg-white p-3">
+                  <p className="font-semibold">{supplier.name}</p>
+                  {models.length === 0 ? (
+                    <p className="text-sm text-ink/60">No phone models yet.</p>
+                  ) : (
+                    <ul className="mt-1 text-sm text-ink/80">
+                      {models.map((phone) => (
+                        <li key={phone.id}>
+                          {phone.phoneType} · {phone.model} · {formatNumber(phone.quantity)} supplied
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+      </Panel>
+    </div>
   )
 }
 
@@ -250,8 +355,8 @@ async function LeadStock({ regionId, date }: { regionId: string; date: string })
   ])
   const region = regions.find((item) => item.id === regionId)
   return (
-    <section className="mt-6">
-      <h2 className="mb-3 text-base font-semibold">{region?.name ?? "Region"} stock</h2>
+    <div className="mt-6">
+      <Panel title={`${region?.name ?? "Region"} stock`}>
       <DataTable caption="Regional stock">
         <thead>
           <tr>
@@ -285,6 +390,7 @@ async function LeadStock({ regionId, date }: { regionId: string; date: string })
             })}
         </tbody>
       </DataTable>
-    </section>
+      </Panel>
+    </div>
   )
 }

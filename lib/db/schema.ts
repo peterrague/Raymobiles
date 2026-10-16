@@ -84,6 +84,7 @@ export const centralReceipts = pgTable(
     manufacturerId: uuid("manufacturer_id")
       .notNull()
       .references(() => manufacturers.id),
+    phoneId: uuid("phone_id").references(() => supplierPhones.id),
     quantity: integer("quantity").notNull(),
     receivedOn: date("received_on", { mode: "string" }).notNull(),
     notes: text("notes"),
@@ -107,6 +108,7 @@ export const allocations = pgTable(
     manufacturerId: uuid("manufacturer_id")
       .notNull()
       .references(() => manufacturers.id),
+    phoneId: uuid("phone_id").references(() => supplierPhones.id),
     quantity: integer("quantity").notNull(),
     allocatedOn: date("allocated_on", { mode: "string" }).notNull(),
     notes: text("notes"),
@@ -250,6 +252,36 @@ export const cashSends = pgTable(
   (table) => [
     uniqueIndex("cash_sends_region_date").on(table.regionId, table.sendDate),
     check("cash_sends_amount_non_negative", sql`${table.amount} >= 0`),
+  ],
+)
+
+export type DailySetupCash = { regionId: string; amount: number }
+export type DailySetupSend = { regionId: string; quantity: number }
+export type DailySetupAllocation = { regionId: string; allocationId: string }
+
+export const dailySetups = pgTable(
+  "daily_setups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    setupDate: date("business_date", { mode: "string" }).notNull(),
+    status: text("status").notNull().default("draft"),
+    supplierId: uuid("supplier_id").references(() => manufacturers.id),
+    phoneId: uuid("phone_id").references(() => supplierPhones.id),
+    quantity: integer("quantity"),
+    sends: jsonb("sends").$type<DailySetupSend[]>().notNull().default([]),
+    cash: jsonb("cash").$type<DailySetupCash[]>().notNull().default([]),
+    receiptId: uuid("receipt_id"),
+    allocations: jsonb("allocations").$type<DailySetupAllocation[]>().notNull().default([]),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("daily_setups_date").on(table.setupDate),
+    check("daily_setups_status", sql`${table.status} IN ('draft', 'submitted')`),
+    check("daily_setups_quantity_non_negative", sql`${table.quantity} IS NULL OR ${table.quantity} >= 0`),
   ],
 )
 

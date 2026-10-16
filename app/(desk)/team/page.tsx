@@ -33,7 +33,7 @@ async function Team() {
     <>
       <PageHeader
         title="Team"
-        lede="Add regions, suppliers, sales leads, and sales agents. Each supplier lists the phones it distributes. Removing someone deactivates the account. Their sales, stock, and cash history stay in the reports."
+        lede="Jill is a supplier, and you can add others. Samsung, Tecno, Infinix, and Oppo are phones under a supplier, with a model and quantity. Removing someone deactivates the account. Their sales, stock, and cash history stay in the reports."
       />
       <div className="grid gap-4">
         <Panel title="Regions">
@@ -80,7 +80,7 @@ async function Team() {
                       </label>
                       <label className={labelClass}>
                         Status
-                        <select name="active" defaultValue={manufacturer.active ? "true" : "false"} className={inputClass}>
+                        <select name="active" defaultValue="true" className={inputClass}>
                           <option value="true">Active</option>
                           <option value="false">Inactive</option>
                         </select>
@@ -119,7 +119,10 @@ async function Team() {
                         </div>
                       ))}
                       <div className="mt-3">
-                        <p className="mb-2 text-sm font-medium">Add a phone under {manufacturer.name}</p>
+                        <p className="mb-2 text-sm font-medium">Add a phone</p>
+                        <p className="mb-2 text-sm text-ink/60">
+                          The type is the product, such as Samsung, Tecno, Infinix, or Oppo. Then add the model and quantity.
+                        </p>
                         <ActionForm action={saveSupplierPhone} submitLabel="Add phone">
                           <input type="hidden" name="supplierId" value={manufacturer.id} />
                           <PhoneFields />

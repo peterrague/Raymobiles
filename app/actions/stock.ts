@@ -8,6 +8,7 @@ import { commit } from "@/lib/commit"
 import {
   findManufacturer,
   findRegion,
+  findSupplierPhone,
   listManufacturers,
   loadAllocationRows,
   loadCentralMovements,
@@ -28,7 +29,12 @@ export async function saveReceipt(_state: ActionState, formData: FormData): Prom
     const user = await requireUser()
     assertAdmin(user)
     const date = parseDate(field(formData, "date"))
-    const manufacturer = await findManufacturer(field(formData, "manufacturerId"))
+    const phoneId = field(formData, "phoneId")
+    const phone = phoneId ? await findSupplierPhone(phoneId) : null
+    if (!field(formData, "id") && !phone) throw new ActionError("Choose a phone type and model.")
+    const manufacturer = phone
+      ? await findManufacturer(phone.supplierId)
+      : await findManufacturer(field(formData, "manufacturerId"))
     if (!manufacturer?.active) throw new ActionError("Choose an active supplier.")
     const quantity = parseWholeNumber(field(formData, "quantity"), "Quantity", { max: 1_000_000 })
     const notes = parseNotes(field(formData, "notes"))
@@ -47,14 +53,14 @@ export async function saveReceipt(_state: ActionState, formData: FormData): Prom
       if (!current || current.manufacturerId !== manufacturer.id) {
         throw new ActionError("That receipt could not be found.")
       }
-      if (current.date !== date) {
-        throw new ActionError("Keep the original date. Record a separate receipt for another day.")
+      if (phone && current.phoneId && current.phoneId !== phone.id) {
+        throw new ActionError("Keep the original phone model. Record a separate receipt for another model.")
       }
       if (received - current.quantity + quantity < allocated) {
         throw new ActionError("That would leave less central stock than has already been allocated.")
       }
-      const before = receiptSnapshot(manufacturer.name, current)
-      const after = receiptSnapshot(manufacturer.name, { ...current, quantity, date, notes })
+      const before = receiptSnapshot(manufacturer.name, phone, current)
+      const after = receiptSnapshot(manufacturer.name, phone, { ...current, quantity, date, notes })
       if (!sameJson(before, after)) {
         await commit([
           db
@@ -83,6 +89,7 @@ export async function saveReceipt(_state: ActionState, formData: FormData): Prom
         db.insert(centralReceipts).values({
           id: receiptId,
           manufacturerId: manufacturer.id,
+          phoneId: phone?.id ?? null,
           quantity,
           receivedOn: date,
           notes,
@@ -95,7 +102,7 @@ export async function saveReceipt(_state: ActionState, formData: FormData): Prom
             action: "create",
             entityType: "central_receipt",
             entityId: receiptId,
-            after: receiptSnapshot(manufacturer.name, { quantity, date, notes }),
+            after: receiptSnapshot(manufacturer.name, phone, { quantity, date, notes }),
           }),
         ),
       ])
@@ -112,7 +119,13 @@ export async function saveAllocation(_state: ActionState, formData: FormData): P
     assertAdmin(user)
     const date = parseDate(field(formData, "date"))
     const region = await findRegion(field(formData, "regionId"))
-    const manufacturer = await findManufacturer(field(formData, "manufacturerId"))
+    const phoneId = field(formData, "phoneId")
+    const phone = phoneId ? await findSupplierPhone(phoneId) : null
+    if (phoneId && !phone) throw new ActionError("Choose a phone type and model.")
+    if (!field(formData, "id") && !phone) throw new ActionError("Choose a phone type and model.")
+    const manufacturer = phone
+      ? await findManufacturer(phone.supplierId)
+      : await findManufacturer(field(formData, "manufacturerId"))
     if (!region) throw new ActionError("Choose a region.")
     if (!manufacturer?.active) throw new ActionError("Choose an active supplier.")
     const quantity = parseWholeNumber(field(formData, "quantity"), "Quantity", { max: 1_000_000 })
@@ -141,6 +154,9 @@ export async function saveAllocation(_state: ActionState, formData: FormData): P
       if (!current || current.regionId !== region.id || current.manufacturerId !== manufacturer.id) {
         throw new ActionError("That allocation could not be found.")
       }
+      if (phone && current.phoneId && current.phoneId !== phone.id) {
+        throw new ActionError("Keep the original phone model. Record a separate allocation for another model.")
+      }
       if (current.date !== date) {
         throw new ActionError("Keep the original date. Record a separate allocation for another day.")
       }
@@ -155,8 +171,8 @@ export async function saveAllocation(_state: ActionState, formData: FormData): P
       if (cell.opening !== null && closingStock(cell.opening, nextReceived, cell.sold) < 0) {
         throw new ActionError("That allocation would make today's closing stock negative.")
       }
-      const before = allocationSnapshot(region.name, manufacturer.name, current)
-      const after = allocationSnapshot(region.name, manufacturer.name, { quantity, date, notes })
+      const before = allocationSnapshot(region.name, manufacturer.name, phone, current)
+      const after = allocationSnapshot(region.name, manufacturer.name, phone, { quantity, date, notes })
       if (!sameJson(before, after)) {
         await commit([
           db
@@ -186,6 +202,7 @@ export async function saveAllocation(_state: ActionState, formData: FormData): P
           id: allocationId,
           regionId: region.id,
           manufacturerId: manufacturer.id,
+          phoneId: phone?.id ?? null,
           quantity,
           allocatedOn: date,
           notes,
@@ -197,7 +214,7 @@ export async function saveAllocation(_state: ActionState, formData: FormData): P
             action: "create",
             entityType: "allocation",
             entityId: allocationId,
-            after: allocationSnapshot(region.name, manufacturer.name, { quantity, date, notes }),
+            after: allocationSnapshot(region.name, manufacturer.name, phone, { quantity, date, notes }),
           }),
         ),
       ])
@@ -310,15 +327,32 @@ export async function saveOpenings(_state: ActionState, formData: FormData): Pro
 
 function receiptSnapshot(
   manufacturer: string,
+  phone: { phoneType: string; model: string } | null,
   row: { quantity: number; date: string; notes: string | null },
 ): AuditJson {
-  return { manufacturer, quantity: row.quantity, date: row.date, notes: row.notes }
+  return {
+    supplier: manufacturer,
+    phoneType: phone?.phoneType ?? null,
+    model: phone?.model ?? null,
+    quantity: row.quantity,
+    date: row.date,
+    notes: row.notes,
+  }
 }
 
 function allocationSnapshot(
   region: string,
   manufacturer: string,
+  phone: { phoneType: string; model: string } | null,
   row: { quantity: number; date: string; notes: string | null },
 ): AuditJson {
-  return { region, manufacturer, quantity: row.quantity, date: row.date, notes: row.notes }
+  return {
+    region,
+    supplier: manufacturer,
+    phoneType: phone?.phoneType ?? null,
+    model: phone?.model ?? null,
+    quantity: row.quantity,
+    date: row.date,
+    notes: row.notes,
+  }
 }

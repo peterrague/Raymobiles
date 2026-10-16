@@ -275,12 +275,12 @@ function buildWorld(today: string) {
   })
 
   const allocationRows = [
-    { id: "alloc-1", regionId: mombasa, manufacturerId: jill, date: days[0], quantity: 70, notes: null },
-    { id: "alloc-2", regionId: mombasa, manufacturerId: jill, date: today, quantity: 10, notes: "Morning delivery" },
-    { id: "alloc-4", regionId: nyandarua, manufacturerId: jill, date: days[0], quantity: 40, notes: null },
+    { id: "alloc-1", regionId: mombasa, manufacturerId: jill, phoneId: a07, date: days[0], quantity: 70, notes: null },
+    { id: "alloc-2", regionId: mombasa, manufacturerId: jill, phoneId: camon, date: today, quantity: 10, notes: "Morning delivery" },
+    { id: "alloc-4", regionId: nyandarua, manufacturerId: jill, phoneId: a07, date: days[0], quantity: 40, notes: null },
   ]
   const receipts = [
-    { id: "rcpt-1", manufacturerId: jill, date: days[0], quantity: 200, notes: "Container from Jill" },
+    { id: "rcpt-1", manufacturerId: jill, phoneId: a07, date: days[0], quantity: 200, notes: "Container from Jill" },
   ]
 
   const names = new Map(people.map((user) => [user.id, user.name]))

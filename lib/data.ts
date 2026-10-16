@@ -19,6 +19,7 @@ import {
   centralReceipts,
   dailyOpenings,
   dailyPrices,
+  dailySetups,
   manufacturers,
   regions,
   sales,
@@ -96,6 +97,7 @@ export async function loadCentralMovements() {
       .select({
         id: centralReceipts.id,
         manufacturerId: centralReceipts.manufacturerId,
+        phoneId: centralReceipts.phoneId,
         date: centralReceipts.receivedOn,
         quantity: centralReceipts.quantity,
         notes: centralReceipts.notes,
@@ -119,6 +121,7 @@ export async function loadAllocationRows() {
       id: allocations.id,
       regionId: allocations.regionId,
       manufacturerId: allocations.manufacturerId,
+      phoneId: allocations.phoneId,
       date: allocations.allocatedOn,
       quantity: allocations.quantity,
       notes: allocations.notes,
@@ -287,6 +290,12 @@ export async function cashSend(regionId: string, date: string) {
     .from(cashSends)
     .where(and(eq(cashSends.regionId, regionId), eq(cashSends.sendDate, date)))
     .limit(1)
+  return row ?? null
+}
+
+export async function dailySetup(date: string) {
+  if (await isPreview()) return null
+  const [row] = await getDb().select().from(dailySetups).where(eq(dailySetups.setupDate, date)).limit(1)
   return row ?? null
 }
 
